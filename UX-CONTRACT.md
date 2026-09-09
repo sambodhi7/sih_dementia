@@ -30,6 +30,7 @@
 | Notices | `src/components/ui.tsx` `Notice` | neutral / support |
 | Content list | `src/components/ui.tsx` `MemberRow` | Who’s Who manager only |
 | Skill catalogue cards | `src/games/skillTransmission/SkillCards.tsx` | caregiver manager / patient activity list |
+| Who’s Who practice insights | `src/components/WhosWhoMetrics.tsx` | guardian-only metric cards |
 | Navigation | `src/SaathiWorkflow.tsx` screen-state router | patient / guardian |
 
 ## Flow ledger

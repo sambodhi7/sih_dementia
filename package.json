@@ -7,7 +7,7 @@
     "start": "node ./node_modules/expo/bin/cli start",
     "web": "node ./node_modules/expo/bin/cli start --web",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
-    "test:adaptive": "node ./node_modules/typescript/bin/tsc src/services/adaptive/__tests__/integration.test.ts --ignoreConfig --outDir .tmp-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck --ignoreDeprecations 6.0 && node .tmp-test/adaptive/__tests__/integration.test.js",
+    "test:adaptive": "node ./node_modules/typescript/bin/tsc src/services/adaptive/__tests__/integration.test.ts --ignoreConfig --outDir .tmp-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck --ignoreDeprecations 6.0 && node .tmp-test/services/adaptive/__tests__/integration.test.js",
     "test": "npm run typecheck && npm run test:adaptive"
   },
   "dependencies": {
@@ -29,6 +29,7 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@react-native-community/cli": "latest",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   }
