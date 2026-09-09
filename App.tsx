@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
+import SaathiWorkflow from './src/SaathiWorkflow';
 import { SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 
 import { ActionButton, Field, MemberRow, Notice, Portrait } from './src/components/ui';
 import { seed } from './src/data/seed';
+import { isSupabaseConfigured, supabase } from './src/lib/supabase';
 import { theme } from './src/theme';
 
 type Screen = 'language' | 'onboarding' | 'login' | 'guardianDashboard' | 'manageWhosWho' | 'memberEditor' | 'patientHome' | 'whosLearning' | 'whosRecall';
@@ -10,7 +12,7 @@ type Member = typeof seed.whosWho.members[number];
 
 const copy = seed.app.copy;
 
-export default function App() {
+function LegacyApp() {
   const [screen, setScreen] = useState<Screen>('language');
   const [languageId, setLanguageId] = useState(seed.languagePacks[0].id);
   const [members, setMembers] = useState<Member[]>(seed.whosWho.members);
@@ -18,6 +20,9 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [setup, setSetup] = useState({ guardianName: seed.guardian.name, relationship: seed.guardian.relationship, patientName: seed.patient.name });
   const [login, setLogin] = useState({ email: seed.guardian.email, password: '' });
+  const [authMode, setAuthMode] = useState<'signIn' | 'signUp'>('signIn');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authNotice, setAuthNotice] = useState('');
   const [editor, setEditor] = useState({ id: '', name: '', relationship: '', personalNote: '', imageUri: seed.whosWho.photoChoices[0], learningOnly: false });
   const [answerState, setAnswerState] = useState<'idle' | 'support' | 'correct'>('idle');
   const [archivedMember, setArchivedMember] = useState<Member | null>(null);
@@ -69,6 +74,134 @@ export default function App() {
     setAnswerState('support');
   };
 
+  const createCareCircle = async () => {
+    if (!supabase) {
+      setAuthNotice(copy.authUnavailable);
+      return false;
+    }
+
+    const { error } = await supabase.functions.invoke('create-care-circle', {
+      body: {
+        patientDisplayName: setup.patientName.trim(),
+        relationshipToPatient: setup.relationship.trim(),
+        preferredLanguageCode: activeLanguage.id,
+        patientTimezone: 'Asia/Kolkata',
+      },
+    });
+
+    if (error) {
+      setAuthNotice(copy.accountProblem);
+      return false;
+    }
+
+    return true;
+  };
+
+  const guardianAlreadyHasPatient = async (guardianId: string) => {
+    if (!supabase) return false;
+    const { data, error } = await supabase
+      .from('patient_guardians')
+      .select('patient_id')
+      .eq('guardian_id', guardianId)
+      .eq('status', 'active')
+      .limit(1);
+    return !error && Boolean(data?.length);
+  };
+
+  const completeOnboarding = async () => {
+    if (!setup.guardianName.trim() || !setup.relationship.trim() || !setup.patientName.trim()) {
+      setAuthNotice(copy.accountProblem);
+      return;
+    }
+    if (!supabase) {
+      setAuthNotice(copy.authUnavailable);
+      setScreen('login');
+      return;
+    }
+
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      setAuthMode('signUp');
+      setAuthNotice('');
+      setScreen('login');
+      return;
+    }
+
+    setAuthBusy(true);
+    const created = await createCareCircle();
+    setAuthBusy(false);
+    if (created) {
+      setAuthNotice('');
+      setScreen('guardianDashboard');
+    }
+  };
+
+  const handleAuthentication = async () => {
+    if (!supabase || !isSupabaseConfigured) {
+      setAuthNotice(copy.authUnavailable);
+      return;
+    }
+    if (!login.email.trim() || login.password.length < 8) {
+      setAuthNotice(copy.accountProblem);
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthNotice('');
+    try {
+      if (authMode === 'signUp') {
+        const { data, error } = await supabase.auth.signUp({
+          email: login.email.trim(),
+          password: login.password,
+          options: {
+            data: {
+              display_name: setup.guardianName.trim(),
+              preferred_language_code: activeLanguage.id,
+            },
+          },
+        });
+        if (error) {
+          setAuthNotice(copy.accountProblem);
+          return;
+        }
+        if (!data.session) {
+          setAuthNotice(copy.checkEmail);
+          return;
+        }
+        const created = await createCareCircle();
+        if (created) {
+          setAuthNotice(copy.accountReady);
+          setScreen('guardianDashboard');
+        }
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: login.email.trim(),
+        password: login.password,
+      });
+      if (error || !data.user) {
+        setAuthNotice(copy.accountProblem);
+        return;
+      }
+      if (await guardianAlreadyHasPatient(data.user.id)) {
+        setScreen('guardianDashboard');
+      } else {
+        setAuthNotice('');
+        setScreen('onboarding');
+      }
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const signOut = async () => {
+    if (supabase) await supabase.auth.signOut();
+    setLogin({ ...login, password: '' });
+    setAuthNotice('');
+    setScreen('language');
+  };
+
   const renderHeader = (title: string, eyebrow?: string, showHome = false) => (
     <View style={styles.header}>
       <View style={styles.brandRow}>
@@ -92,8 +225,8 @@ export default function App() {
       </View>
       <Notice>{`${activeLanguage.label} is selected. ${activeLanguage.voicePromptPack} voice prompts will be available offline.`}</Notice>
       <View style={styles.footerActions}>
-        <ActionButton label={copy.continue} onPress={() => setScreen('onboarding')} />
-        <ActionButton label={copy.guardianSignIn} onPress={() => setScreen('login')} variant="quiet" />
+      <ActionButton label={copy.continue} onPress={() => setScreen('onboarding')} />
+      <ActionButton label={copy.guardianSignIn} onPress={() => { setAuthMode('signIn'); setAuthNotice(''); setScreen('login'); }} variant="quiet" />
         <ActionButton label={copy.patientMode} onPress={() => setScreen('patientHome')} variant="quiet" />
       </View>
     </ScreenLayout>
@@ -109,19 +242,22 @@ export default function App() {
         <Field label={copy.patientName} value={setup.patientName} onChangeText={(patientName) => setSetup({ ...setup, patientName })} />
       </View>
       <Notice>{`Language pack: ${activeLanguage.nativeLabel}. You can change this safely later.`}</Notice>
-      <ActionButton label={copy.continue} onPress={() => setScreen('login')} />
+      {authNotice ? <Notice tone="support">{authNotice}</Notice> : null}
+      <ActionButton label={copy.continue} onPress={completeOnboarding} disabled={authBusy} />
     </ScreenLayout>
   );
 
   const renderLogin = () => (
     <ScreenLayout key={screen}>
-      {renderHeader(copy.signInTitle, seed.app.name)}
-      <Text style={styles.bodyLead}>{copy.signInHint}</Text>
+      {renderHeader(authMode === 'signIn' ? copy.signInTitle : copy.createAccountTitle, seed.app.name)}
+      <Text style={styles.bodyLead}>{authMode === 'signIn' ? copy.signInHint : copy.createAccountHint}</Text>
       <View style={styles.formStack}>
         <Field label={copy.email} value={login.email} onChangeText={(email) => setLogin({ ...login, email })} placeholder="name@example.com" />
         <Field label={copy.password} value={login.password} onChangeText={(password) => setLogin({ ...login, password })} secureTextEntry placeholder="••••••••" />
       </View>
-      <ActionButton label={copy.signIn} onPress={() => setScreen('guardianDashboard')} />
+      {authNotice ? <Notice tone="support">{authNotice}</Notice> : null}
+      <ActionButton label={authBusy ? (authMode === 'signIn' ? copy.signingIn : copy.creatingAccount) : (authMode === 'signIn' ? copy.signIn : copy.createAccount)} onPress={handleAuthentication} disabled={authBusy} />
+      <ActionButton label={authMode === 'signIn' ? copy.needAccount : copy.alreadyHaveAccount} onPress={() => { setAuthMode(authMode === 'signIn' ? 'signUp' : 'signIn'); setAuthNotice(''); }} variant="quiet" />
       <ActionButton label={copy.patientMode} onPress={() => setScreen('patientHome')} variant="quiet" />
     </ScreenLayout>
   );
@@ -137,6 +273,7 @@ export default function App() {
         <ActionButton label={copy.manageWhosWho} onPress={() => setScreen('manageWhosWho')} />
       </View>
       <ActionButton label={copy.patientMode} onPress={() => setScreen('patientHome')} variant="quiet" />
+      <ActionButton label={copy.signOut} onPress={signOut} variant="quiet" />
     </ScreenLayout>
   );
 
@@ -302,3 +439,7 @@ const styles = StyleSheet.create({
   recallPhoto: { alignItems: 'center', backgroundColor: theme.colors.surface, borderRadius: theme.radius.media, padding: 22, borderWidth: 1, borderColor: theme.colors.border },
   answerList: { gap: 12 },
 });
+
+// The original concept screen is retained above for reference while the
+// local-first workflow lives in its own module.
+export default SaathiWorkflow;

@@ -25,6 +25,8 @@ export type GameEvent =
 export type GameSession = {
   gameId: GameId
   startedAt: number
+  // Companion-assisted sessions are engagement data, but not latency-calibration data.
+  companionPresent?: boolean
   // Required for Day's Plan because morning orientation is not scored recall.
   phase?: 'morning' | 'evening'
 }

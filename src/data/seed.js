@@ -1,4 +1,8 @@
-// Demo-only content. Replace this module with local SQLite/API-backed selectors later.
+/** @type {Array<{ id: string, name: string, relationship: string, personalNote: string, imageUri: string, nameAudioLabel: string, noteAudioLabel: string, learningOnly: boolean }>} */
+const emptyMembers = [];
+
+// App copy and bundled language metadata only. Personal memories are created
+// by a guardian on the device and stored locally; never ship fake family data.
 export const seed = {
   app: {
     name: 'Saathi',
@@ -17,9 +21,21 @@ export const seed = {
       memberRelationship: 'Relationship',
       signInTitle: 'Welcome back',
       signInHint: 'Use your guardian account to manage familiar memories.',
+      createAccountTitle: 'Create guardian account',
+      createAccountHint: 'Your account protects access to your family’s care circle.',
       email: 'Email address',
       password: 'Password',
       signIn: 'Sign in',
+      createAccount: 'Create account',
+      alreadyHaveAccount: 'I already have an account',
+      needAccount: 'Create a guardian account',
+      checkEmail: 'Please check your email to confirm your account, then sign in.',
+      accountReady: 'Your account is ready.',
+      authUnavailable: 'Guardian sign-in is not configured on this device yet.',
+      accountProblem: 'We could not complete that request. Please check the details and try again.',
+      signingIn: 'Signing in…',
+      creatingAccount: 'Creating account…',
+      signOut: 'Sign out',
       patientMode: 'Open patient mode',
       openActivity: 'Open',
       manageWhosWho: 'Manage Who’s Who',
@@ -49,6 +65,9 @@ export const seed = {
       practiceNow: 'Practice now',
       tryTogether: 'Let’s try together',
       chooseName: 'Who is this?',
+      choosePhotoForName: 'Find the photo',
+      choosePhotoForClue: 'Which photo matches this clue?',
+      chooseThisPhoto: 'Choose this photo',
       calmHint: 'Let’s hear it together.',
       gentleConfirm: 'Lovely. You remembered.',
       backToActivity: 'Back to activities',
@@ -70,16 +89,16 @@ export const seed = {
     { id: 'hindi', label: 'Hindi', nativeLabel: 'हिन्दी', displayFont: 'Saathi Display', bodyFont: 'Saathi Patient', voicePromptPack: 'hi-demo', dateFormatter: 'hi-IN', textScaleAdjustment: 1.02 },
   ],
   guardian: {
-    name: 'Ananya Das',
-    relationship: 'Granddaughter',
-    email: 'ananya@example.com',
+    name: '',
+    relationship: '',
+    email: '',
   },
   patient: {
-    id: 'patient-meera',
-    name: 'Meera Devi',
-    greetingName: 'Meera',
-    photoUri: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=900&q=85',
-    reminder: { time: '8:00 AM', title: 'Morning medicine', detail: 'A gentle reminder from your family.' },
+    id: 'local-patient',
+    name: '',
+    greetingName: '',
+    photoUri: '',
+    reminder: { time: '', title: '', detail: '' },
   },
   games: [
     { id: 'whos-who', title: 'Who’s Who', subtitle: 'Familiar faces and names', badge: 'Ready', tone: 'leaf' },
@@ -87,43 +106,9 @@ export const seed = {
     { id: 'song-circle', title: 'Song Circle', subtitle: 'Songs you know by heart', badge: 'Coming soon', tone: 'neutral' },
   ],
   whosWho: {
-    defaultPersonalNote: 'A familiar part of your family story.',
-    photoChoices: [
-      'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=700&q=85',
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=700&q=85',
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=700&q=85',
-    ],
-    members: [
-      {
-        id: 'person-rina',
-        name: 'Rina',
-        relationship: 'Daughter',
-        personalNote: 'Rina visits every Sunday and loves making tea with you.',
-        imageUri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=900&q=85',
-        nameAudioLabel: 'Rina',
-        noteAudioLabel: 'Rina visits every Sunday.',
-        learningOnly: false,
-      },
-      {
-        id: 'person-amit',
-        name: 'Amit',
-        relationship: 'Son',
-        personalNote: 'Amit calls in the evening and asks about the garden.',
-        imageUri: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=900&q=85',
-        nameAudioLabel: 'Amit',
-        noteAudioLabel: 'Amit calls in the evening.',
-        learningOnly: false,
-      },
-      {
-        id: 'person-kavya',
-        name: 'Kavya',
-        relationship: 'Granddaughter',
-        personalNote: 'Kavya enjoys listening to your stories after school.',
-        imageUri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=900&q=85',
-        nameAudioLabel: 'Kavya',
-        noteAudioLabel: 'Kavya enjoys your stories.',
-        learningOnly: false,
-      },
-    ],
+    defaultPersonalNote: '',
+    /** @type {string[]} */
+    photoChoices: [],
+    members: emptyMembers,
   },
 };

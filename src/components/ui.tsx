@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { theme } from '../theme';
@@ -46,19 +47,23 @@ export function Field({ label, value, onChangeText, placeholder, secureTextEntry
   secureTextEntry?: boolean;
   multiline?: boolean;
 }) {
+  const [showSecret, setShowSecret] = useState(false);
   return (
     <View style={styles.fieldWrap}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.mutedInk}
-        secureTextEntry={secureTextEntry}
-        multiline={multiline}
-        style={[styles.field, multiline && styles.multiline]}
-      />
+      <View>
+        <TextInput
+          accessibilityLabel={label}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.mutedInk}
+          secureTextEntry={secureTextEntry && !showSecret}
+          multiline={multiline}
+          style={[styles.field, secureTextEntry && styles.secretField, multiline && styles.multiline]}
+        />
+        {secureTextEntry ? <Pressable accessibilityRole="button" accessibilityLabel={showSecret ? 'Hide password' : 'Show password'} onPress={() => setShowSecret((visible) => !visible)} style={styles.secretToggle}><Text style={styles.secretToggleText}>{showSecret ? 'Hide' : 'Show'}</Text></Pressable> : null}
+      </View>
     </View>
   );
 }
@@ -72,14 +77,14 @@ export function Portrait({ uri, name, size = 88 }: { uri?: string; name: string;
 }
 
 export function MemberRow({ member, onEdit, onArchive, labels }: {
-  member: { name: string; relationship: string; imageUri?: string; learningOnly?: boolean };
+  member: { name: string; relationship: string; imageUri?: string; photoUri?: string | null; learningOnly?: boolean };
   onEdit: () => void;
   onArchive: () => void;
   labels: { edit: string; archive: string; learningOnly: string };
 }) {
   return (
     <View style={styles.memberRow}>
-      <Portrait uri={member.imageUri} name={member.name} size={66} />
+      <Portrait uri={member.photoUri ?? member.imageUri} name={member.name} size={66} />
       <View style={styles.memberInfo}>
         <Text style={styles.memberName}>{member.name}</Text>
         <Text style={styles.memberRelation}>{member.relationship}</Text>
@@ -110,6 +115,9 @@ const styles = StyleSheet.create({
   fieldWrap: { gap: 8 },
   fieldLabel: { color: theme.colors.ink, fontSize: theme.type.guardian, fontWeight: '700' },
   field: { borderColor: theme.colors.border, borderWidth: 1.5, borderRadius: theme.radius.control, minHeight: 56, paddingHorizontal: 16, color: theme.colors.ink, backgroundColor: theme.colors.white, fontSize: theme.type.guardian },
+  secretField: { paddingRight: 78 },
+  secretToggle: { position: 'absolute', right: 6, top: 6, minWidth: 58, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control },
+  secretToggleText: { color: theme.colors.leaf, fontSize: theme.type.meta, fontWeight: '800' },
   multiline: { minHeight: 116, paddingTop: 14, textAlignVertical: 'top' },
   avatarFallback: { backgroundColor: theme.colors.leafSoft, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: theme.colors.leaf, fontWeight: '800', fontSize: theme.type.guardian },

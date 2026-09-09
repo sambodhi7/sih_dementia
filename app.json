@@ -5,10 +5,23 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "platforms": ["android", "ios", "web"],
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
+    "android": {
+      "package": "in.saathi.cognitivecare"
+    },
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#FFFDF8"
-    }
+    },
+    "plugins": [
+      "expo-sqlite",
+      ["expo-audio", { "microphonePermission": "Allow Saathi to record a family voice note." }],
+      ["expo-image-picker", { "photosPermission": "Allow Saathi to choose a family photo for a memory." }],
+      "expo-notifications"
+    ]
   }
 }
