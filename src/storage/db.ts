@@ -47,8 +47,10 @@ export async function saveWeb() {
 }
 
 export function queuedWrite(work: () => Promise<void>) {
-  writeTail = writeTail.then(work).catch(() => undefined);
-  return writeTail;
+  const result = writeTail.then(work);
+  // Keep subsequent writes running, but let the caller handle a failed save.
+  writeTail = result.catch(() => undefined);
+  return result;
 }
 
 export { Platform };

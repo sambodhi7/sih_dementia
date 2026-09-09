@@ -17,7 +17,7 @@ function freeze(state: ControllerState, game: GameConfig, now: number) {
 export function onSessionEnd(events: GameEvent[], state: ControllerState, game: GameConfig, now: number = Date.now(), phase?: 'morning' | 'evening', companionPresent = false): { next: NextConfig; state: ControllerState } {
   const outcome = extract(events, phase, companionPresent)
   if (outcome.wasAbandoned) return freeze(state, game, now)
-  if (state.sessionsObserved < 5) return calibrate(outcome, state, game, now)
+  if (state.sessionsObserved < 5 || (game.gameId === 'whos_who' && state.latencySamples.length < 8)) return calibrate(outcome, state, game, now)
   if (outcome.scoredActions === 0) {
     const held = holdConfig(state.difficulty, state.hintTimeSeconds, game.usesDifficulty, game.usesHintTiming, game.minHintSeconds, game.maxHintSeconds)
     return { state, next: nextConfig(held.difficulty, held.hintTimeSeconds, game, 'tracking') }

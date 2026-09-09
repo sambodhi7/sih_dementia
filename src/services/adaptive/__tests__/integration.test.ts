@@ -1,9 +1,11 @@
 import { onSessionEnd } from '../controller'
 import { extract } from '../extract'
 import { calculatePatientProfileMetrics } from '../../patient-metrics'
+import { RecallInput, answerChoices } from '../../../games/whosWho/model'
 import { createInitialState, REGISTRY } from '../registry'
 import type { GameEvent, SessionRecord } from '../types'
 import { whosWhoChoiceIds, whosWhoOptionCount } from '../whosWhoPresentation'
+import type { WhosWhoItem } from '../../../storage/types'
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -43,3 +45,18 @@ check(choices.length === 3 && choices.includes('two'), 'adaptive choices retain 
 check(JSON.stringify(choices) === JSON.stringify(whosWhoChoiceIds('two', ['one', 'two', 'three', 'four'], 3, 'prompt-1')), 'choice ordering stays stable while answering')
 
 console.log('adaptive integration checks passed')
+const abandonedMetrics = calculatePatientProfileMetrics([{ session: { gameId: 'whos_who', startedAt: 1_000 }, events: [...events, { type: 'abandoned', at: 6_000 }] }], 600)
+check(abandonedMetrics.activity.completedSessions === 0 && abandonedMetrics.sessionsIncluded === 0 && abandonedMetrics.activity.abandonedSessions === 1, 'interrupted sessions are excluded from scored metrics')
+
+async function verifyWhosWhoInput() {
+  const captured: GameEvent[] = []
+  let clock = 1_000
+  const input = new RecallInput('person-1', async (event) => { captured.push(event) }, () => ++clock)
+  await input.show(); await input.replay(); await input.tap('person-2', 4, 5); await input.help(); const assisted = await input.tap('person-1', 6, 7)
+  check(captured.map((event) => event.type).join(',') === 'prompt_shown,audio_replayed,tap,hint_shown,tap', 'Who’s Who persists every interaction in producer-contract order')
+  check(assisted?.independent === false && captured[4].type === 'tap' && !captured[4].solvedUnassisted, 'replay and assistance prevent an independent response')
+  const candidates = Array.from({ length: 4 }, (_, index) => ({ id: `person-${index}`, patientId: 'patient-1', archivedAt: null, paused: false, learningOnly: false, learnedAt: 1, photoUri: 'photo', nameAudioUri: 'audio' })) as unknown as WhosWhoItem[]
+  check(answerChoices(candidates[0], candidates, { ...state, difficulty: 0.8 }).length === 4, 'saved difficulty controls the number of Who’s Who options')
+}
+
+void verifyWhosWhoInput().then(() => console.log('adaptive integration checks passed'))

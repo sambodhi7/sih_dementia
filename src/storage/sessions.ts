@@ -1,6 +1,6 @@
 import { createInitialState, onSessionEnd, REGISTRY } from '../services/adaptive';
 import { calculatePatientProfileMetrics, extractSessionOutcome } from '../services/patient-metrics';
-import type { ControllerState, GameEvent, GameId, GameSession, SessionOutcome, SessionRecord } from '../services/adaptive/types';
+import type { ControllerState, GameEvent, GameId, GameSession, SessionRecord } from '../services/adaptive/types';
 import { getDb, loadWeb, makeId, Platform, queuedWrite, saveWeb } from './db';
 import { enqueue } from './sync';
 import type { StoredSession } from './types';
@@ -19,17 +19,18 @@ export async function persistGameEvent(sessionId: string, event: GameEvent) {
 
 function outcomeFromEvents(events: GameEvent[], session: StoredSession) { return extractSessionOutcome(events, { gameId: session.gameId, startedAt: session.startedAt, companionPresent: session.companionPresent }); }
 
-export async function finishWhosWhoSession(session: StoredSession, fallbackOutcome: SessionOutcome) {
+export async function finishWhosWhoSession(session: StoredSession) {
   const now = Date.now();
   if (Platform.OS === 'web') {
     await queuedWrite(async () => {
       const snapshot = await loadWeb();
+      if (snapshot.outcomes.some((entry) => entry.sessionId === session.id)) return;
       const events = snapshot.events.filter((entry) => entry.sessionId === session.id).sort((a, b) => a.seq - b.seq).map((entry) => entry.event);
       const prior = snapshot.controllerStates.find((state) => state.patientId === session.patientId && state.gameId === session.gameId);
       const initial = prior ?? createInitialState(session.patientId, REGISTRY[session.gameId], session.startedAt);
       const result = events.length ? onSessionEnd(events, initial, REGISTRY[session.gameId], now, undefined, session.companionPresent) : { state: initial, next: { difficulty: initial.difficulty, hintTimeSeconds: initial.hintTimeSeconds, factor: 1, source: 'tracking' as const } };
-      snapshot.sessions = snapshot.sessions.map((entry) => entry.id === session.id ? { ...entry, endedAt: now } : entry);
-      snapshot.outcomes.push({ sessionId: session.id, outcome: events.length ? outcomeFromEvents(events, session) : fallbackOutcome });
+      snapshot.sessions = snapshot.sessions.map((entry) => entry.id === session.id ? { ...entry, endedAt: now, abandoned: events.some((event) => event.type === 'abandoned') } : entry);
+      snapshot.outcomes.push({ sessionId: session.id, outcome: outcomeFromEvents(events, session) });
       snapshot.controllerStates = [...snapshot.controllerStates.filter((state) => !(state.patientId === session.patientId && state.gameId === session.gameId)), result.state];
       snapshot.controllerStateChanges.push({ id: makeId(), state: result.state, sessionId: session.id, source: result.next.source, at: now });
       await saveWeb();
@@ -37,10 +38,11 @@ export async function finishWhosWhoSession(session: StoredSession, fallbackOutco
     return;
   }
   const db = await getDb(); await queuedWrite(async () => { await db.withTransactionAsync(async () => {
-    await db.runAsync('UPDATE sessions SET ended_at = ? WHERE id = ?', [now, session.id]);
+    if (await db.getFirstAsync('SELECT session_id FROM session_outcomes WHERE session_id = ?', [session.id])) return;
     const eventRows = await db.getAllAsync<{ payload: string }>('SELECT payload FROM events WHERE session_id = ? ORDER BY seq', [session.id]);
     const events = eventRows.map((row) => JSON.parse(row.payload) as GameEvent);
-    const outcome = events.length ? outcomeFromEvents(events, session) : fallbackOutcome;
+    const outcome = outcomeFromEvents(events, session);
+    await db.runAsync('UPDATE sessions SET ended_at = ?, abandoned = ? WHERE id = ?', [now, outcome.wasAbandoned ? 1 : 0, session.id]);
     await db.runAsync('INSERT OR REPLACE INTO session_outcomes (session_id, scored_actions, success_rate, unassisted_rate, median_latency_seconds, was_abandoned, successful_scored_actions, unassisted_scored_actions, unassisted_latencies) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [session.id, outcome.scoredActions, outcome.successRate, outcome.unassistedRate, outcome.medianLatencySeconds, outcome.wasAbandoned ? 1 : 0, outcome.successfulScoredActions, outcome.unassistedScoredActions, JSON.stringify(outcome.unassistedLatencies)]);
     const prior = await db.getFirstAsync<{ difficulty: number; hint_time_seconds: number; sessions_observed: number; latency_samples: string }>('SELECT difficulty, hint_time_seconds, sessions_observed, latency_samples FROM controller_state WHERE patient_id = ? AND game_id = ?', [session.patientId, session.gameId]);
     const state: ControllerState = prior ? { patientId: session.patientId, gameId: session.gameId, difficulty: prior.difficulty, hintTimeSeconds: prior.hint_time_seconds, sessionsObserved: prior.sessions_observed, latencySamples: JSON.parse(prior.latency_samples) as number[], updatedAt: now } : createInitialState(session.patientId, REGISTRY[session.gameId], session.startedAt);
@@ -90,12 +92,14 @@ export async function abandonWhosWhoSession(session: StoredSession) {
     await enqueue(db, 'controller_state', `${session.patientId}:${session.gameId}`, now);
     await enqueue(db, 'controller_state_changed', trajectoryId, now);
   }); });
+  await persistGameEvent(session.id, { type: 'abandoned', at: Date.now() });
+  await finishWhosWhoSession(session);
 }
 
 export async function readPatientSessionRecords(patientId: string, gameId?: GameId): Promise<SessionRecord[]> {
-  if (Platform.OS === 'web') { const snapshot = await loadWeb(); return snapshot.sessions.filter((session) => session.patientId === patientId && (!gameId || session.gameId === gameId)).map((session) => ({ session: { gameId: session.gameId, startedAt: session.startedAt, companionPresent: session.companionPresent }, events: snapshot.events.filter((event) => event.sessionId === session.id).sort((a, b) => a.seq - b.seq).map((event) => event.event) })); }
+  if (Platform.OS === 'web') { const snapshot = await loadWeb(); return snapshot.sessions.filter((session) => session.endedAt !== null && session.patientId === patientId && (!gameId || session.gameId === gameId)).sort((a, b) => a.startedAt - b.startedAt).map((session) => ({ session: { gameId: session.gameId, startedAt: session.startedAt, companionPresent: session.companionPresent }, events: snapshot.events.filter((event) => event.sessionId === session.id).sort((a, b) => a.seq - b.seq).map((event) => event.event) })); }
   const db = await getDb();
-  const sessions = await db.getAllAsync<{ id: string; game_id: GameId; started_at: number; phase: 'morning' | 'evening' | null; companion_present: number }>(`SELECT id, game_id, started_at, phase, companion_present FROM sessions WHERE patient_id = ? ${gameId ? 'AND game_id = ?' : ''} ORDER BY started_at ASC`, gameId ? [patientId, gameId] : [patientId]);
+  const sessions = await db.getAllAsync<{ id: string; game_id: GameId; started_at: number; phase: 'morning' | 'evening' | null; companion_present: number }>(`SELECT id, game_id, started_at, phase, companion_present FROM sessions WHERE ended_at IS NOT NULL AND patient_id = ? ${gameId ? 'AND game_id = ?' : ''} ORDER BY started_at ASC`, gameId ? [patientId, gameId] : [patientId]);
   return Promise.all(sessions.map(async (stored) => { const events = await db.getAllAsync<{ payload: string }>('SELECT payload FROM events WHERE session_id = ? ORDER BY seq ASC', [stored.id]); const gameSession: GameSession = { gameId: stored.game_id, startedAt: stored.started_at, companionPresent: stored.companion_present === 1, ...(stored.phase ? { phase: stored.phase } : {}) }; return { session: gameSession, events: events.map((event) => JSON.parse(event.payload) as GameEvent) }; }));
 }
 

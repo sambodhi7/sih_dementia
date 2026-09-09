@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import type { GestureResponderEvent } from 'react-native';
 
-import type { ControllerState, SessionOutcome } from './services/adaptive/types';
+import type { ControllerState } from './services/adaptive/types';
 import { whosWhoChoiceIds, whosWhoOptionCount } from './services/adaptive/whosWhoPresentation';
 import { AudioCapture, AudioReplay } from './components/audio';
+import { WhosWhoMetrics } from './components/WhosWhoMetrics';
 import { ActionButton, Field, MemberRow, Notice, Portrait } from './components/ui';
 import { seed } from './data/seed';
 import { supabase } from './lib/supabase';
@@ -17,7 +18,7 @@ import type { StoredSession, WhosWhoDraft, WhosWhoItem } from './storage/types';
 import { theme } from './theme';
 import { touchFeedback } from './lib/haptics';
 
-type Screen = 'language' | 'onboarding' | 'login' | 'dashboard' | 'manager' | 'editor' | 'patient' | 'learning' | 'recall' | 'waiting';
+type Screen = 'language' | 'onboarding' | 'login' | 'dashboard' | 'manager' | 'editor' | 'patient' | 'learning' | 'recall' | 'waiting' | 'metrics';
 type Editor = WhosWhoDraft & { id?: string };
 type RecallMode = 'photo-to-name' | 'name-to-photo' | 'clue-to-photo';
 type CareProfile = { guardianName: string; relationship: string; patientName: string };
@@ -78,6 +79,7 @@ export default function SaathiWorkflow() {
   const [pendingRecallMode, setPendingRecallMode] = useState<RecallMode>('photo-to-name');
   const [controllerState, setControllerState] = useState<ControllerState | null>(null);
   const [waitingUntil, setWaitingUntil] = useState<number | null>(null);
+  const [companionPresent, setCompanionPresent] = useState(false);
 
   const language = useMemo(() => seed.languagePacks.find((item) => item.id === languageId) ?? seed.languagePacks[0], [languageId]);
   const patientDisplayName = setup.patientName.trim();
@@ -151,7 +153,7 @@ export default function SaathiWorkflow() {
   const beginRecall = async (item: WhosWhoItem, requestedMode?: RecallMode) => {
     // A practice round is one session. This gives the controller a meaningful
     // batch of mixed prompts instead of treating each card as a full session.
-    const started = session ?? await startWhosWhoSession(patientId, item.id);
+    const started = session ?? await startWhosWhoSession(patientId, item.id, companionPresent);
     await persistGameEvent(started.id, { type: 'prompt_shown', itemId: item.id, at: Date.now() });
     // New memories start with the familiar photo. Later reviews rotate name and
     // relationship/personal-note prompts without changing the per-item schedule.
@@ -182,7 +184,6 @@ export default function SaathiWorkflow() {
     if (!correct) { setHadWrong(true); await showHint(); return; }
     const result = hadWrong ? 'incorrect' : usedHelp ? 'supported' : 'independent'; const review = await applyReviewResult(activeItem.id, result); if (review) await scheduleWhosWhoReminder(review.dueAt);
     const latency = Math.max(0, (now - session.startedAt) / 1000);
-    const outcome: SessionOutcome = { scoredActions: nextAttempts, successRate: 1 / nextAttempts, unassistedRate: result === 'independent' ? 1 : 0, medianLatencySeconds: result === 'independent' ? latency : null, wasAbandoned: false, unassistedLatencies: result === 'independent' ? [latency] : [], successfulScoredActions: 1, unassistedScoredActions: result === 'independent' ? 1 : 0 };
     await refresh();
     const completed = [...completedPromptKeys, `${activeItem.id}:${mode}`];
     setCompletedPromptKeys(completed);
@@ -192,7 +193,7 @@ export default function SaathiWorkflow() {
     const remainingPrompts = (await listWhosWhoItems()).filter((item) => !item.paused && !item.learningOnly).flatMap((item) => recallModes.map((recallMode) => ({ item, recallMode }))).filter(({ item, recallMode }) => !completed.includes(`${item.id}:${recallMode}`));
     const nextPrompt = remainingPrompts.find(({ item, recallMode }) => item.id !== activeItem.id && recallMode !== mode) ?? remainingPrompts.find(({ item }) => item.id !== activeItem.id) ?? remainingPrompts[0];
     if (!nextPrompt) {
-      await finishWhosWhoSession(session, outcome);
+      await finishWhosWhoSession(session);
       setSession(null);
       // The feed continues into the next due memory. A memory whose interval
       // has not elapsed is not shown early; present a calm waiting state when
@@ -215,7 +216,7 @@ export default function SaathiWorkflow() {
   const leaveActivity = async () => { if (session && activeItem) { await abandonWhosWhoSession(session); const review = await applyReviewResult(activeItem.id, 'distress'); if (review) await scheduleWhosWhoReminder(review.dueAt); } setSession(null); setAnswerState('idle'); setScreen('patient'); await refresh(); };
   const goBack = useCallback(() => {
     if (screen === 'recall' || screen === 'learning') { void leaveActivity(); return true; }
-    const destinations: Partial<Record<Screen, Screen>> = { onboarding: 'language', login: 'language', dashboard: 'language', manager: 'dashboard', editor: 'manager', patient: 'language', waiting: 'patient' };
+    const destinations: Partial<Record<Screen, Screen>> = { onboarding: 'language', login: 'language', dashboard: 'language', manager: 'dashboard', editor: 'manager', patient: 'language', waiting: 'patient', metrics: 'dashboard' };
     const destination = destinations[screen];
     if (!destination) return false;
     setArchiveCandidate(null); setNotice(''); setScreen(destination);
@@ -227,10 +228,11 @@ export default function SaathiWorkflow() {
   }, [goBack]);
   const currentHint = activeItem ? hintMessage(activeItem, hintLevel) : null;
   if (!ready) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>Preparing your local memory library…</Text></View></SafeAreaView>;
+  if (screen === 'metrics') return <Layout><Header title={copy.whosWhoMetrics} eyebrow={copy.dashboardTitle} onBack={goBack} /><WhosWhoMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
   if (screen === 'language') return <Layout><Header title={copy.chooseLanguage} eyebrow={seed.app.tagline} /><Text style={styles.body}>{copy.chooseLanguageHint}</Text><View style={styles.stack}>{seed.languagePacks.map((pack) => <ActionButton key={pack.id} label={`${pack.nativeLabel} · ${pack.label}`} onPress={() => setLanguageId(pack.id)} variant={languageId === pack.id ? 'primary' : 'secondary'} />)}</View><Notice>{`${language.label} voice prompts can be used offline.`}</Notice><View style={styles.stack}><ActionButton label={copy.continue} onPress={() => setScreen('onboarding')} /><ActionButton label={copy.guardianSignIn} onPress={() => { setAuthMode('signIn'); setNotice(''); setScreen('login'); }} variant="quiet" /><ActionButton label={copy.patientMode} onPress={() => setScreen('patient')} variant="quiet" /></View></Layout>;
   if (screen === 'onboarding') return <Layout><Header title={copy.guardianSetup} eyebrow="Step 1 of 2" onBack={goBack} /><Text style={styles.body}>Set up the care circle. Family media stays on this device.</Text><View style={styles.stack}><Field label={copy.guardianName} value={setup.guardianName} onChangeText={(guardianName) => setSetup({ ...setup, guardianName })} /><Field label={copy.relationship} value={setup.relationship} onChangeText={(relationship) => setSetup({ ...setup, relationship })} /><Field label={copy.patientName} value={setup.patientName} onChangeText={(patientName) => setSetup({ ...setup, patientName })} /></View>{notice ? <Notice tone="support">{notice}</Notice> : null}<ActionButton label={busy ? 'Setting up…' : copy.continue} onPress={async () => { const { data } = await supabase?.auth.getUser() ?? { data: null }; if (!data?.user) { setAuthMode('signUp'); setScreen('login'); } else if (await createCareCircle()) setScreen('dashboard'); }} disabled={busy} /></Layout>;
   if (screen === 'login') return <Layout><Header title={authMode === 'signIn' ? copy.signInTitle : copy.createAccountTitle} onBack={goBack} /><Text style={styles.body}>{authMode === 'signIn' ? copy.signInHint : copy.createAccountHint}</Text><View style={styles.stack}><Field label={copy.email} value={login.email} onChangeText={(email) => setLogin({ ...login, email })} placeholder="name@example.com" /><Field label={copy.password} value={login.password} onChangeText={(password) => setLogin({ ...login, password })} secureTextEntry placeholder="At least 8 characters" /></View>{notice ? <Notice tone="support">{notice}</Notice> : null}<ActionButton label={busy ? (authMode === 'signIn' ? copy.signingIn : copy.creatingAccount) : authMode === 'signIn' ? copy.signIn : copy.createAccount} onPress={authenticate} disabled={busy} /><ActionButton label={authMode === 'signIn' ? copy.needAccount : copy.alreadyHaveAccount} onPress={() => { setAuthMode(authMode === 'signIn' ? 'signUp' : 'signIn'); setNotice(''); }} variant="quiet" /><ActionButton label={copy.patientMode} onPress={() => setScreen('patient')} variant="quiet" /></Layout>;
-  if (screen === 'dashboard') return <Layout><Header title={copy.dashboardTitle} eyebrow={`${setup.guardianName} · ${setup.relationship}`} onBack={goBack} /><Notice>Photos, voice notes, learning history, and review schedules are stored locally first.</Notice><View style={styles.panel}><Text style={styles.overline}>MEMORY LIBRARY</Text><Text style={styles.panelTitle}>{copy.whosWhoTitle}</Text><Text style={styles.body}>{`${items.length} active familiar memories are ready for gentle practice.`}</Text><ActionButton label={copy.manageWhosWho} onPress={() => setScreen('manager')} /></View><ActionButton label={copy.patientMode} onPress={() => setScreen('patient')} variant="quiet" /><ActionButton label={copy.signOut} onPress={async () => { await supabase?.auth.signOut(); setScreen('language'); }} variant="quiet" /></Layout>;
+  if (screen === 'dashboard') return <Layout><Header title={copy.dashboardTitle} eyebrow={`${setup.guardianName} · ${setup.relationship}`} onBack={goBack} /><Notice>Photos, voice notes, learning history, and review schedules are stored locally first.</Notice><View style={styles.panel}><Text style={styles.overline}>MEMORY LIBRARY</Text><Text style={styles.panelTitle}>{copy.whosWhoTitle}</Text><Text style={styles.body}>{`${items.length} active familiar memories are ready for gentle practice.`}</Text><ActionButton label={copy.whosWhoMetrics} onPress={() => setScreen('metrics')} variant="secondary" /><ActionButton label={companionPresent ? copy.assistedOn : copy.assistedOff} onPress={() => setCompanionPresent((value) => !value)} variant="secondary" /><ActionButton label={copy.manageWhosWho} onPress={() => setScreen('manager')} /></View><ActionButton label={copy.patientMode} onPress={() => setScreen('patient')} variant="quiet" /><ActionButton label={copy.signOut} onPress={async () => { await supabase?.auth.signOut(); setScreen('language'); }} variant="quiet" /></Layout>;
   if (screen === 'manager') return <Layout><Header title={copy.whosWhoTitle} eyebrow={copy.dashboardTitle} onBack={goBack} /><Text style={styles.body}>New memories always begin with Learning before any recall question.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}{archiveCandidate ? <View style={styles.archive}><Text style={styles.panelTitle}>Archive {archiveCandidate.name}?</Text><Text style={styles.body}>This is reversible. The memory will be hidden from patient activities.</Text><ActionButton label="Archive memory" onPress={archive} variant="secondary" /><ActionButton label="Keep memory" onPress={() => setArchiveCandidate(null)} variant="quiet" /></View> : null}<ActionButton label={copy.addPerson} onPress={() => openEditor()} />{items.length ? <View style={styles.stack}>{items.map((item) => <MemberRow key={item.id} member={item} onEdit={() => openEditor(item)} onArchive={() => setArchiveCandidate(item)} labels={{ edit: copy.editPerson, archive: copy.archive, learningOnly: copy.learningOnly }} />)}</View> : <Notice>Add a familiar person, place, or object to begin.</Notice>}<ActionButton label={copy.dashboardTitle} onPress={() => setScreen('dashboard')} variant="quiet" /></Layout>;
   if (screen === 'editor') return <Layout><Header title={editor.id ? copy.editPerson : copy.addPerson} eyebrow={copy.whosWhoTitle} onBack={goBack} /><Text style={styles.body}>Choose a photo and record the name and optional personal note in a familiar voice.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.photo}><Portrait uri={editor.photoUri ?? undefined} name={editor.name || copy.photo} size={150} /><ActionButton label={editor.photoUri ? 'Choose another photo' : 'Choose a photo'} onPress={selectPhoto} variant="secondary" /></View><View style={styles.stack}><Field label={copy.name} value={editor.name} onChangeText={(name) => setEditor((value) => ({ ...value, name }))} /><Field label={copy.memberRelationship} value={editor.relationship} onChangeText={(relationship) => setEditor((value) => ({ ...value, relationship }))} /><Field label={copy.personalNote} value={editor.personalNote} onChangeText={(personalNote) => setEditor((value) => ({ ...value, personalNote }))} multiline /></View><View style={styles.stack}><AudioCapture label={copy.nameAudio} uri={editor.nameAudioUri} onCaptured={(nameAudioUri) => setEditor((value) => ({ ...value, nameAudioUri }))} onProblem={setNotice} /><AudioCapture label={copy.noteAudio} uri={editor.noteAudioUri} onCaptured={(noteAudioUri) => setEditor((value) => ({ ...value, noteAudioUri }))} onProblem={setNotice} /></View><ActionButton label={editor.learningOnly ? 'Learning only: on' : 'Learning only: off'} onPress={() => setEditor((value) => ({ ...value, learningOnly: !value.learningOnly }))} variant="secondary" /><ActionButton label={copy.saveMemory} onPress={saveMemory} /><ActionButton label={copy.cancel} onPress={() => setScreen('manager')} variant="quiet" /></Layout>;
   if (screen === 'learning' && activeItem) return <Layout patient><Header title={`${copy.meet} ${activeItem.name}`} eyebrow={copy.whosWhoTitle} /><View style={styles.frame}><Portrait uri={activeItem.photoUri ?? undefined} name={activeItem.name} size={250} /><Text style={styles.frameName}>{activeItem.name}</Text><Text style={styles.relationship}>{activeItem.relationship}</Text>{activeItem.personalNote ? <Text style={styles.note}>{activeItem.personalNote}</Text> : null}</View><AudioReplay uri={activeItem.nameAudioUri} label={copy.hearAgain} /><ActionButton label={copy.practiceNow} onPress={practice} /><ActionButton label={copy.home} onPress={leaveActivity} variant="quiet" /></Layout>;
