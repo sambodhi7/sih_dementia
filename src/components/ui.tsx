@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import type { GestureResponderEvent } from 'react-native';
 
 import { theme } from '../theme';
+import { touchFeedback } from '../lib/haptics';
 
 type ActionButtonProps = {
   label: string;
@@ -18,7 +19,7 @@ export function ActionButton({ label, onPress, variant = 'primary', disabled = f
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPress={onPress}
+      onPress={(event) => { touchFeedback(); onPress(event); }}
       style={({ pressed }) => [
         styles.button,
         compact && styles.compactButton,
@@ -63,7 +64,7 @@ export function Field({ label, value, onChangeText, placeholder, secureTextEntry
           multiline={multiline}
           style={[styles.field, secureTextEntry && styles.secretField, multiline && styles.multiline]}
         />
-        {secureTextEntry ? <Pressable accessibilityRole="button" accessibilityLabel={showSecret ? 'Hide password' : 'Show password'} onPress={() => setShowSecret((visible) => !visible)} style={styles.secretToggle}><Text style={styles.secretToggleText}>{showSecret ? 'Hide' : 'Show'}</Text></Pressable> : null}
+        {secureTextEntry ? <Pressable accessibilityRole="button" accessibilityLabel={showSecret ? 'Hide password' : 'Show password'} onPress={() => { touchFeedback(); setShowSecret((visible) => !visible); }} style={styles.secretToggle}><Text style={styles.secretToggleText}>{showSecret ? 'Hide' : 'Show'}</Text></Pressable> : null}
       </View>
     </View>
   );

@@ -3,6 +3,7 @@ import { extract } from '../extract'
 import { calculatePatientProfileMetrics } from '../../patient-metrics'
 import { createInitialState, REGISTRY } from '../registry'
 import type { GameEvent, SessionRecord } from '../types'
+import { whosWhoChoiceIds, whosWhoOptionCount } from '../whosWhoPresentation'
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -34,5 +35,11 @@ const metrics = calculatePatientProfileMetrics(sessions, 400)
 check(metrics.activity.completedSessions === 1 && metrics.independentPerformancePercent === 50, 'patient metrics aggregate persisted outcomes')
 const companionMetrics = calculatePatientProfileMetrics([{ session: { gameId: 'whos_who', startedAt: 1_000, companionPresent: true }, events }], 500)
 check(companionMetrics.medianResponseLatencySeconds === null, 'companion latency is excluded from patient metrics')
+
+check(whosWhoOptionCount({ ...state, difficulty: 0.2 }, 4) === 2, 'lower difficulty reduces Who’s Who choices')
+check(whosWhoOptionCount({ ...state, difficulty: 0.8 }, 4) === 4, 'higher difficulty may use four Who’s Who choices')
+const choices = whosWhoChoiceIds('two', ['one', 'two', 'three', 'four'], 3, 'prompt-1')
+check(choices.length === 3 && choices.includes('two'), 'adaptive choices retain the correct memory')
+check(JSON.stringify(choices) === JSON.stringify(whosWhoChoiceIds('two', ['one', 'two', 'three', 'four'], 3, 'prompt-1')), 'choice ordering stays stable while answering')
 
 console.log('adaptive integration checks passed')

@@ -49,6 +49,7 @@ export async function finishWhosWhoSession(session: StoredSession, fallbackOutco
     const trajectoryId = makeId();
     await db.runAsync('INSERT INTO controller_state_changed (id, patient_id, game_id, session_id, difficulty, hint_time_seconds, source, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [trajectoryId, session.patientId, session.gameId, session.id, result.state.difficulty, result.state.hintTimeSeconds, result.next.source, now]);
     await enqueue(db, 'session_outcomes', session.id, now);
+    await enqueue(db, 'sessions', session.id, now);
     await enqueue(db, 'controller_state', `${session.patientId}:${session.gameId}`, now);
     await enqueue(db, 'controller_state_changed', trajectoryId, now);
   }); });
@@ -56,8 +57,39 @@ export async function finishWhosWhoSession(session: StoredSession, fallbackOutco
 
 export async function abandonWhosWhoSession(session: StoredSession) {
   await persistGameEvent(session.id, { type: 'abandoned', at: Date.now() }); const now = Date.now();
-  if (Platform.OS === 'web') { await queuedWrite(async () => { const snapshot = await loadWeb(); snapshot.sessions = snapshot.sessions.map((entry) => entry.id === session.id ? { ...entry, endedAt: now, abandoned: true } : entry); await saveWeb(); }); return; }
-  await (await getDb()).runAsync('UPDATE sessions SET ended_at = ?, abandoned = 1 WHERE id = ?', [now, session.id]);
+  if (Platform.OS === 'web') {
+    await queuedWrite(async () => {
+      const snapshot = await loadWeb();
+      const events = snapshot.events.filter((entry) => entry.sessionId === session.id).sort((a, b) => a.seq - b.seq).map((entry) => entry.event);
+      const prior = snapshot.controllerStates.find((state) => state.patientId === session.patientId && state.gameId === session.gameId);
+      const initial = prior ?? createInitialState(session.patientId, REGISTRY[session.gameId], session.startedAt);
+      const result = onSessionEnd(events, initial, REGISTRY[session.gameId], now, undefined, session.companionPresent);
+      snapshot.sessions = snapshot.sessions.map((entry) => entry.id === session.id ? { ...entry, endedAt: now, abandoned: true } : entry);
+      snapshot.outcomes.push({ sessionId: session.id, outcome: outcomeFromEvents(events, session) });
+      snapshot.controllerStates = [...snapshot.controllerStates.filter((state) => !(state.patientId === session.patientId && state.gameId === session.gameId)), result.state];
+      snapshot.controllerStateChanges.push({ id: makeId(), state: result.state, sessionId: session.id, source: result.next.source, at: now });
+      await saveWeb();
+    });
+    return;
+  }
+  const db = await getDb();
+  await queuedWrite(async () => { await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE sessions SET ended_at = ?, abandoned = 1 WHERE id = ?', [now, session.id]);
+    const eventRows = await db.getAllAsync<{ payload: string }>('SELECT payload FROM events WHERE session_id = ? ORDER BY seq', [session.id]);
+    const events = eventRows.map((row) => JSON.parse(row.payload) as GameEvent);
+    const outcome = outcomeFromEvents(events, session);
+    await db.runAsync('INSERT OR REPLACE INTO session_outcomes (session_id, scored_actions, success_rate, unassisted_rate, median_latency_seconds, was_abandoned, successful_scored_actions, unassisted_scored_actions, unassisted_latencies) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [session.id, outcome.scoredActions, outcome.successRate, outcome.unassistedRate, outcome.medianLatencySeconds, 1, outcome.successfulScoredActions, outcome.unassistedScoredActions, JSON.stringify(outcome.unassistedLatencies)]);
+    const prior = await db.getFirstAsync<{ difficulty: number; hint_time_seconds: number; sessions_observed: number; latency_samples: string }>('SELECT difficulty, hint_time_seconds, sessions_observed, latency_samples FROM controller_state WHERE patient_id = ? AND game_id = ?', [session.patientId, session.gameId]);
+    const state: ControllerState = prior ? { patientId: session.patientId, gameId: session.gameId, difficulty: prior.difficulty, hintTimeSeconds: prior.hint_time_seconds, sessionsObserved: prior.sessions_observed, latencySamples: JSON.parse(prior.latency_samples) as number[], updatedAt: now } : createInitialState(session.patientId, REGISTRY[session.gameId], session.startedAt);
+    const result = onSessionEnd(events, state, REGISTRY[session.gameId], now, undefined, session.companionPresent);
+    await db.runAsync('INSERT OR REPLACE INTO controller_state (patient_id, game_id, difficulty, hint_time_seconds, sessions_observed, latency_samples, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [session.patientId, session.gameId, result.state.difficulty, result.state.hintTimeSeconds, result.state.sessionsObserved, JSON.stringify(result.state.latencySamples), result.state.updatedAt]);
+    const trajectoryId = makeId();
+    await db.runAsync('INSERT INTO controller_state_changed (id, patient_id, game_id, session_id, difficulty, hint_time_seconds, source, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [trajectoryId, session.patientId, session.gameId, session.id, result.state.difficulty, result.state.hintTimeSeconds, result.next.source, now]);
+    await enqueue(db, 'sessions', session.id, now);
+    await enqueue(db, 'session_outcomes', session.id, now);
+    await enqueue(db, 'controller_state', `${session.patientId}:${session.gameId}`, now);
+    await enqueue(db, 'controller_state_changed', trajectoryId, now);
+  }); });
 }
 
 export async function readPatientSessionRecords(patientId: string, gameId?: GameId): Promise<SessionRecord[]> {
