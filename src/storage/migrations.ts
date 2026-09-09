@@ -42,6 +42,32 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: 'skill_transmission.local_catalog_and_completions',
+    up: async (db) => {
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS skill_transmission_details (
+          item_id TEXT PRIMARY KEY REFERENCES items(id),
+          catalog_key TEXT NOT NULL,
+          prompt_audio_uri TEXT,
+          enabled INTEGER NOT NULL DEFAULT 0,
+          archived_at INTEGER,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_skill_transmission_patient ON items(patient_id, game_id);
+        CREATE TABLE IF NOT EXISTS skill_transmission_completions (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES sessions(id),
+          item_id TEXT NOT NULL REFERENCES items(id),
+          completed_at INTEGER NOT NULL,
+          duration_ms INTEGER NOT NULL,
+          photo_uri TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_skill_completion_item ON skill_transmission_completions(item_id, completed_at);
+      `);
+    },
+  },
 ];
 
 export const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

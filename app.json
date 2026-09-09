@@ -20,7 +20,7 @@
     "plugins": [
       "expo-sqlite",
       ["expo-audio", { "microphonePermission": "Allow Saathi to record a family voice note." }],
-      ["expo-image-picker", { "photosPermission": "Allow Saathi to choose a family photo for a memory." }],
+      ["expo-image-picker", { "photosPermission": "Allow Saathi to choose a family photo or save a shared skill moment." }],
       "expo-notifications"
     ]
   }

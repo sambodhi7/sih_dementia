@@ -2,6 +2,48 @@ import type { ControllerState, GameEvent, SessionOutcome } from '../services/ada
 
 export type ReviewResult = 'independent' | 'supported' | 'incorrect' | 'distress';
 
+export type SkillCatalogKey = 'tie_shoes' | 'tie_knot' | 'tie_necktie' | 'fold_gamosa' | 'plant_seed' | 'button_shirt' | 'braid_hair' | 'brush_teeth';
+export type DashboardActivityId = 'skill-transmission';
+
+export type SkillTransmissionItem = {
+  id: string;
+  patientId: string;
+  catalogKey: SkillCatalogKey;
+  promptAudioUri: string | null;
+  enabled: boolean;
+  archivedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type ActivitySession = {
+  id: string;
+  patientId: string;
+  activityId: DashboardActivityId;
+  itemId: string;
+  startedAt: number;
+  endedAt: number | null;
+  interrupted: boolean;
+  companionPresent: true;
+};
+
+export type EngagementEvent =
+  | { type: 'activity_opened'; itemId: string; at: number }
+  | { type: 'prompt_played'; itemId: string; replayed: boolean; at: number }
+  | { type: 'activity_started'; itemId: string; at: number }
+  | { type: 'activity_completed'; itemId: string; durationMs: number; at: number }
+  | { type: 'completion_photo_captured'; itemId: string; at: number }
+  | { type: 'interrupted'; itemId: string; at: number };
+
+export type SkillCompletion = {
+  id: string;
+  sessionId: string;
+  itemId: string;
+  completedAt: number;
+  durationMs: number;
+  photoUri: string | null;
+};
+
 export type WhosWhoItem = {
   id: string;
   patientId: string;
@@ -43,4 +85,8 @@ export type LocalSnapshot = {
   controllerStates: ControllerState[];
   controllerStateChanges: Array<{ id: string; state: ControllerState; sessionId: string; source: 'calibration' | 'tracking' | 'frozen'; at: number }>;
   settings: Record<string, string>;
+  skillTransmissionItems: SkillTransmissionItem[];
+  activitySessions: ActivitySession[];
+  activityEvents: Array<{ id: string; sessionId: string; seq: number; event: EngagementEvent }>;
+  skillCompletions: SkillCompletion[];
 };

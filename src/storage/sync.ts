@@ -2,7 +2,7 @@ import type * as SQLite from 'expo-sqlite';
 
 import { getDb, makeId } from './db';
 
-export type SyncableTable = 'sessions' | 'events' | 'session_outcomes' | 'controller_state' | 'controller_state_changed';
+export type SyncableTable = 'sessions' | 'events' | 'session_outcomes' | 'controller_state' | 'controller_state_changed' | 'skill_transmission_completions';
 
 export type SyncQueueRow = {
   id: string;
@@ -28,6 +28,7 @@ export async function readSyncRecord(row: SyncQueueRow): Promise<Record<string, 
     session_outcomes: 'SELECT * FROM session_outcomes WHERE session_id = ?',
     controller_state: 'SELECT * FROM controller_state WHERE patient_id || \':\' || game_id = ?',
     controller_state_changed: 'SELECT * FROM controller_state_changed WHERE id = ?',
+    skill_transmission_completions: 'SELECT * FROM skill_transmission_completions WHERE id = ?',
   };
   return (await db.getFirstAsync<Record<string, unknown>>(queries[row.table_name], [row.row_id])) ?? null;
 }

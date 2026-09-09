@@ -5,7 +5,11 @@ import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioPlayer, useAu
 import { theme } from '../theme';
 import { ActionButton, Notice } from './ui';
 
-export function AudioCapture({ label, uri, onCaptured, onProblem }: { label: string; uri: string | null; onCaptured: (uri: string) => void; onProblem: (message: string) => void }) {
+type AudioCaptureLabels = { working: string; stopAndSave: string; recordAgain: string; record: string; saved: string; permission: string; failed: string };
+
+const defaultLabels: AudioCaptureLabels = { working: 'Working…', stopAndSave: 'Stop and save recording', recordAgain: 'Record again', record: 'Record voice note', saved: 'Family recording saved on this device.', permission: 'Microphone access is needed to record a family voice note.', failed: 'The recording could not be saved. Please try again.' };
+
+export function AudioCapture({ label, uri, onCaptured, onProblem, labels = defaultLabels }: { label: string; uri: string | null; onCaptured: (uri: string) => void | Promise<void>; onProblem: (message: string) => void; labels?: AudioCaptureLabels }) {
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, directory: 'document' });
   const state = useAudioRecorderState(recorder);
   const [busy, setBusy] = useState(false);
@@ -15,23 +19,23 @@ export function AudioCapture({ label, uri, onCaptured, onProblem }: { label: str
     try {
       if (state.isRecording) {
         await recorder.stop();
-        if (recorder.uri) onCaptured(recorder.uri);
+        if (recorder.uri) await onCaptured(recorder.uri);
       } else {
         const permission = await AudioModule.requestRecordingPermissionsAsync();
-        if (!permission.granted) { onProblem('Microphone access is needed to record a family voice note.'); return; }
+        if (!permission.granted) { onProblem(labels.permission); return; }
         await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
         await recorder.prepareToRecordAsync();
         recorder.record();
       }
     } catch {
-      onProblem('The recording could not be saved. Please try again.');
+      onProblem(labels.failed);
     } finally { setBusy(false); }
   };
 
   return <View style={{ gap: 8 }}>
     <Text style={{ color: theme.colors.ink, fontSize: theme.type.guardian, fontWeight: '700' }}>{label}</Text>
-    <ActionButton label={busy ? 'Working…' : state.isRecording ? 'Stop and save recording' : uri ? 'Record again' : 'Record voice note'} onPress={toggleRecording} variant={state.isRecording ? 'secondary' : 'quiet'} disabled={busy} />
-    {uri ? <Notice>Family recording saved on this device.</Notice> : null}
+    <ActionButton label={busy ? labels.working : state.isRecording ? labels.stopAndSave : uri ? labels.recordAgain : labels.record} onPress={toggleRecording} variant={state.isRecording ? 'secondary' : 'quiet'} disabled={busy} />
+    {uri ? <Notice>{labels.saved}</Notice> : null}
   </View>;
 }
 

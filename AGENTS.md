@@ -32,7 +32,7 @@ Do not copy or redeclare the canonical adaptive types elsewhere. Import them fro
 ## Patient experience is a safety requirement
 
 - No visible failure states: no red errors, X marks, score loss, timers, streaks, leaderboards, or guilt mechanics.
-- Patient UI is tap-only, with at least 64px touch targets, large readable text, high contrast, and visual plus audio support for each prompt.
+- Patient navigation and primary controls are tap-only, with at least 64px touch targets, large readable text, high contrast, and visual plus audio support for each prompt. A game may use a deliberately approved swipe or drag mechanic when it has a large forgiving gesture area and an accessibility activation path.
 - Wrong answers are private telemetry facts, never patient feedback. Give a calm hint or reveal, then let the patient perform the correct response.
 - Do not make diagnostic, curative, or clinical-improvement claims from telemetry. Dashboard output is a non-diagnostic support-needed or change-from-baseline signal.
 

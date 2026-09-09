@@ -266,14 +266,13 @@ far longer than episodic memory. Someone who cannot recall their grandchild's
 name can often still tie a knot, fold cloth, or weave. Building around what the
 elder still *has* is neurologically correct, not merely kind.
 
-**Full design.** The app names a skill and steps back. The elder demonstrates;
-the grandchild learns. Candidates: folding a gamosa, tying a phanek or mekhela
-chador, shoe-tying, weaving basics, knotting a fishing net, sharpening a dao,
-planting technique.
+**Full design.** The app pairs a familiar real-world skill with a calm digital
+rehearsal. The elder can demonstrate and the companion can participate. The
+interaction uses one large, forgiving action at a time; it never labels an
+action wrong or presents itself as the authority on the elder's technique.
 
-**The app must not teach the skill.** If it shows a tutorial the elder becomes
-redundant, which destroys the entire point. The app announces the task, offers
-an optional photo capture at the end, and the child taps "we did it."
+The digital rehearsal is deliberately symbolic rather than a prescriptive
+tutorial. It supports the shared activity without making the elder redundant.
 
 Optionally the child records the elder explaining it — another archive asset.
 
@@ -283,9 +282,11 @@ marked as known, not by a difficulty float.
 **Telemetry.** Completion, duration, repeat engagement. Not a cognitive measure.
 Its value is dignity and transmission.
 
-**MVP.** A card per skill with a name and a spoken prompt, a "we did it" button,
-and an optional photo. Three hardcoded skills. Genuinely about an hour — it is
-the simplest screen in the app and it carries one of the strongest ideas.
+**MVP.** The fixed catalogue remains caregiver-configured. Shoelace tying,
+gamosa folding, and shirt buttoning have playable swipe-and-drag interactions;
+completion is detected from the interaction rather than a generic completion
+button. The remaining catalogue skills stay out of Patient Mode until their
+interactions exist. A completion photo remains optional and local.
 
 ---
 

@@ -62,8 +62,9 @@ export async function applyReviewResult(id: string, result: ReviewResult) {
 }
 
 export async function chooseNextWhosWhoItem(excludedItemIds: string[] = []) {
-  const now = Date.now();
-  const candidates = (await listWhosWhoItems()).filter((item) => !item.paused && !item.learningOnly).sort((a, b) => { const ar = !a.learnedAt ? 0 : a.dueAt <= now ? 1 : 2; const br = !b.learnedAt ? 0 : b.dueAt <= now ? 1 : 2; return ar - br || a.dueAt - b.dueAt; });
+  // Prototype mode deliberately does not gate memories by their review schedule.
+  // Existing review state remains in storage so spacing can be restored later.
+  const candidates = (await listWhosWhoItems()).filter((item) => !item.learningOnly);
   return candidates.find((item) => !excludedItemIds.includes(item.id)) ?? null;
 }
 

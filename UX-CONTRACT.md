@@ -29,6 +29,7 @@
 | Forms | `src/components/ui.tsx` `Field` | guardian setup / guardian login / member editor |
 | Notices | `src/components/ui.tsx` `Notice` | neutral / support |
 | Content list | `src/components/ui.tsx` `MemberRow` | Who’s Who manager only |
+| Skill catalogue cards | `src/games/skillTransmission/SkillCards.tsx` | caregiver manager / patient activity list |
 | Navigation | `src/SaathiWorkflow.tsx` screen-state router | patient / guardian |
 
 ## Flow ledger
@@ -42,6 +43,8 @@
 | Learning exposure | Practice now | Reveals familiar frame, then marks the item learned locally before a supported recall | Learning exposure is not scored recall |
 | Patient recall response | Tap a name or a photo option | Runs a complete, interleaved practice round: photo→name, name→photo, and relationship/personal-note clue→photo for every active memory; prefer a different memory and prompt form on each next card | After all `active memories × 3` prompts, return Home with a calm “come again later” message; wrong responses remain private and receive the association before retry |
 | Leave active recall | Home | Appends an abandonment event and pauses/reschedules only through the per-item distress rule | Interrupted sessions do not create a scored outcome |
+| Configure Skill Transmission | Record a caregiver prompt, then show/hide a fixed catalogue skill | Saves the local prompt and visibility state; no custom skill creation is offered | A missing or denied microphone permission keeps the skill hidden and preserves all existing settings |
+| Complete Skill Transmission | Finish every large, forgiving touch action in a supported skill | Detects completion automatically, appends engagement-only events, stores an optional local completion photo, and returns to skill choices or Home | A missed gesture resets calmly; leaving before completion marks the activity interrupted with no controller outcome or cognitive score |
 
 ## Offline behavior
 

@@ -24,6 +24,7 @@ There is no separate `backend/` copy of the adaptive or patient-metrics logic. B
 - Game events are written immediately to SQLite through a serialized promise tail.
 - Session completion writes outcomes, controller state, trajectory state, and sync-queue rows atomically for controller games.
 - Song Circle is wired through `GameHost` as a dashboard-only game. It records sessions and events but does not enter the adaptive controller.
+- Skill Transmission has a fixed seven-skill catalogue. Shoelace tying, gamosa folding, and shirt buttoning currently have playable tap-or-drag patient interactions; the other four remain caregiver-visible but cannot be enabled yet. It records engagement sessions and events but does not enter the adaptive controller.
 - The adaptive controller has calibration, safety bounds, tracking, abandonment freeze, per-game registry, and pure event extraction.
 - Controller state is read per patient and per controller-scoped game before the game renders.
 - Patient metrics reconstruct sessions from SQLite's raw event log and calculate independent performance, support needed, latency, variability, activity, and a basic trend.
@@ -65,7 +66,7 @@ The device is the source of truth. Raw photos and audio stay on-device. Sync is 
 
 ## Known Gaps
 
-- The repository currently contains only Song Circle as a renderable game module. The other five game designs are documented but are not yet implemented in `src/games`.
+- The repository now contains Who’s Who and Skill Transmission patient workflows; Song Circle and the remaining documented games still need their final renderable modules.
 - The app entry point is still a development harness with a swatch screen and Song Circle; patient login, home, reminders, caregiver dashboard, and ASHA views are documented but not implemented.
 - Voice output and family recordings are represented by content fields, but the demo pack has no audio URIs yet.
 - The adaptive controller and patient-metrics reader are wired at the host boundary, but the current default app mounts only Song Circle, which is dashboard-only. Controller-game screens still need to pass the correct Day's Plan phase and their complete producer telemetry before the stochastic loop runs in the default demo.

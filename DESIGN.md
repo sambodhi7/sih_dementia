@@ -118,7 +118,7 @@ Use one rounded-stroke icon family at 24–26px. Icons never stand alone for pat
 
 ### Motion
 
-Motion is limited to 150–200ms pressed feedback and the gentle appearance of an assistance cue. No confetti, bouncing, auto-advancing, countdown, or decorative ambient animation. Respect reduced-motion settings.
+Motion is limited to 150–200ms pressed feedback and the gentle appearance of an assistance cue. Skill Transmission may additionally use one-time 250–500ms fades and small object movement for one clear swipe or drag action at a time. These are symbolic rehearsals, not scored or prescriptive real-world tutorials. No confetti, bouncing, countdown, failure animation, or decorative ambient animation. Respect reduced-motion settings.
 
 ### Audio behavior
 
