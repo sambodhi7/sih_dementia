@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+
+# Expo / React Native generated state and builds
+.expo/
+.expo-shared/
+dist/
+web-build/
+android/
+ios/
+*.apk
+*.aab
+*.ipa
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+# Local-first patient data and development databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.realm
+*.realm.lock
+
+# Runtime logs and reports
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+.nyc_output/
+
+# TypeScript and bundler caches
+*.tsbuildinfo
+.cache/
+.parcel-cache/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary exports and private media staging
+tmp/
+temp/
+*.tmp
+*.bak
+private-media/
+remote-upload-staging/

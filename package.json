@@ -1,0 +1,24 @@
+{
+  "name": "saathi-ui",
+  "version": "0.1.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "node ./node_modules/expo/bin/cli start",
+    "web": "node ./node_modules/expo/bin/cli start --web",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "test": "node -e \"console.log('UI demo: no automated tests configured yet')\""
+  },
+  "dependencies": {
+    "expo": "~57.0.20",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-native": "0.86.3",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  }
+}

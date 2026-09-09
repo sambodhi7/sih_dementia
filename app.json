@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Saathi",
+    "slug": "saathi-ui",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["android", "ios", "web"],
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFDF8"
+    }
+  }
+}
