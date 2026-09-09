@@ -29,7 +29,7 @@ final.
 
 ---
 
-## 2. Canonical types (already finalized — copy verbatim into `src/adaptive/types.ts`)
+## 2. Canonical types (already finalized — maintained in `src/services/adaptive/types.ts`)
 
 ```ts
 export type GameId = 'days_plan' | 'whos_who' | 'recipe'
@@ -199,13 +199,17 @@ Notes:
 ## 4. File layout
 
 ```
-src/adaptive/
-  db.ts              -- open connection, WAL pragma
-  migrations.ts       -- PRAGMA user_version pattern, ordered migration list
-  sessions.ts          -- session + event writes, per-event INSERT
-  items.ts             -- items table CRUD
-  controllerState.ts   -- controller_state + controller_state_changed writes
+src/storage/
+  db.ts                -- open connection, WAL pragma
+  migrations.ts        -- PRAGMA user_version pattern, ordered migration list
+  sessions.ts           -- session + event writes, per-event INSERT
+  items.ts              -- items table CRUD
+  controllerState.ts    -- controller_state recovery/read helpers
   sync.ts               -- outbox: enqueue / listPending / markSent / drain
+
+src/services/
+  adaptive/             -- on-device controller, extractor, calibration
+  patient-metrics/      -- longitudinal dashboard metrics
 ```
 
 Migration 1 = the schema in §3 exactly, transcribed 1:1 so it diffs cleanly

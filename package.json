@@ -7,7 +7,8 @@
     "start": "node ./node_modules/expo/bin/cli start",
     "web": "node ./node_modules/expo/bin/cli start --web",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
-    "test": "node -e \"console.log('UI demo: no automated tests configured yet')\""
+    "test:adaptive": "node ./node_modules/typescript/bin/tsc src/services/adaptive/__tests__/integration.test.ts --ignoreConfig --outDir .tmp-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck --ignoreDeprecations 6.0 && node .tmp-test/adaptive/__tests__/integration.test.js",
+    "test": "npm run typecheck && npm run test:adaptive"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.1.1",

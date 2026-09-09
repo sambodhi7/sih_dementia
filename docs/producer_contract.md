@@ -3,7 +3,7 @@
 **Audience:** whoever builds the game screens.
 **Purpose:** the metrics and adaptive-controller layers are already written. They consume `GameEvent[]` plus a `GameSession`. If the games emit events that don't match this contract, the metrics come out silently wrong — not crashed, *wrong*, which is worse. Nothing here is optional.
 
-**Canonical types live in `src/adaptive/types.ts`.** Import from there. Do not redeclare these types anywhere else.
+**Canonical event and controller types live in `src/services/adaptive/types.ts`.** Import from there. Do not redeclare these types anywhere else.
 
 ---
 
@@ -142,7 +142,7 @@ The controller freezes on abandoned sessions rather than adapting from them. Mis
 ### `recipe`
 
 - `sequenceViolation: true` means the patient performed a step genuinely out of order. Set it only for a real ordering error, never as a general wrong-answer flag.
-- **Open issue — do not build around current behaviour.** The extractor today scores *only* taps where `sequenceViolation === true`, which means a perfect Recipe session produces zero scored actions and every scored action is by construction a failure. This is being changed so that all step attempts are scored and `sequenceViolation` acts as the correctness signal. Emit every step attempt as a tap with correct/incorrect set normally, and set `sequenceViolation` on ordering errors. That's the shape the fixed extractor expects.
+- All Recipe step attempts are scored. `sequenceViolation` describes a genuine ordering error; it is not a filter for whether an attempt enters the metrics. Emit every step attempt as a tap with `correct` set normally, and set `sequenceViolation` only on ordering errors.
 
 ---
 

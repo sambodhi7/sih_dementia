@@ -1,4 +1,4 @@
-import type { GameEvent, SessionOutcome } from '../adaptive/types';
+import type { ControllerState, GameEvent, SessionOutcome } from '../services/adaptive/types';
 
 export type ReviewResult = 'independent' | 'supported' | 'incorrect' | 'distress';
 
@@ -40,5 +40,7 @@ export type LocalSnapshot = {
   sessions: StoredSession[];
   events: Array<{ id: string; sessionId: string; seq: number; event: GameEvent }>;
   outcomes: Array<{ sessionId: string; outcome: SessionOutcome }>;
+  controllerStates: ControllerState[];
+  controllerStateChanges: Array<{ id: string; state: ControllerState; sessionId: string; source: 'calibration' | 'tracking' | 'frozen'; at: number }>;
   settings: Record<string, string>;
 };

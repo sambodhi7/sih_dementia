@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 
-import type { SessionOutcome } from './adaptive/types';
+import type { SessionOutcome } from './services/adaptive/types';
 import { AudioCapture, AudioReplay } from './components/audio';
 import { ActionButton, Field, MemberRow, Notice, Portrait } from './components/ui';
 import { seed } from './data/seed';
 import { supabase } from './lib/supabase';
 import { pickAndPersistPhoto } from './storage/media';
 import { scheduleWhosWhoReminder } from './storage/reminders';
-import { abandonWhosWhoSession, applyReviewResult, archiveWhosWhoItem, chooseNextWhosWhoItem, finishWhosWhoSession, getLocalSetting, initializeLocalStore, listWhosWhoItems, markLearningExposure, persistGameEvent, saveWhosWhoItem, setLocalSetting, startWhosWhoSession } from './storage/localStore';
+import { applyReviewResult, archiveWhosWhoItem, chooseNextWhosWhoItem, getLocalSetting, initializeItems, listWhosWhoItems, markLearningExposure, saveWhosWhoItem, setLocalSetting } from './storage/items';
+import { abandonWhosWhoSession, finishWhosWhoSession, persistGameEvent, startWhosWhoSession } from './storage/sessions';
 import type { StoredSession, WhosWhoDraft, WhosWhoItem } from './storage/types';
 import { theme } from './theme';
 
@@ -28,7 +30,7 @@ function authProblemMessage(message?: string) {
   return copy.accountProblem;
 }
 
-function PhotoAnswer({ item, onPress }: { item: WhosWhoItem; onPress: () => void }) {
+function PhotoAnswer({ item, onPress }: { item: WhosWhoItem; onPress: (event: GestureResponderEvent) => void }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={`Photo option: ${item.name}`} onPress={onPress} style={({ pressed }) => [styles.photoAnswer, pressed && styles.pressed]}><Portrait uri={item.photoUri ?? undefined} name={item.name} size={132} /><Text style={styles.photoAnswerText}>{copy.chooseThisPhoto}</Text></Pressable>;
 }
 
@@ -59,6 +61,7 @@ export default function SaathiWorkflow() {
   const [answerState, setAnswerState] = useState<'idle' | 'support' | 'complete'>('idle');
   const [hadWrong, setHadWrong] = useState(false);
   const [usedHelp, setUsedHelp] = useState(false);
+  const [hintLevel, setHintLevel] = useState(0);
   const [attempts, setAttempts] = useState(0);
   const [completedPromptKeys, setCompletedPromptKeys] = useState<string[]>([]);
   const [pendingRecallMode, setPendingRecallMode] = useState<RecallMode>('photo-to-name');
@@ -70,7 +73,7 @@ export default function SaathiWorkflow() {
   const refresh = async () => setItems(await listWhosWhoItems());
 
   useEffect(() => { void (async () => {
-    await initializeLocalStore();
+    await initializeItems();
     const stored = await getLocalSetting('patient-id'); if (stored) setPatientId(stored);
     const storedProfile = await getLocalSetting('care-profile');
     if (storedProfile) { try { setSetup(JSON.parse(storedProfile) as CareProfile); } catch { /* Ignore malformed local profile data. */ } }
@@ -119,7 +122,7 @@ export default function SaathiWorkflow() {
   const openActivity = async () => {
     const next = await chooseNextWhosWhoItem();
     if (!next) { setNotice('There are no active memories yet. A caregiver can add one in Caregiver Area.'); return; }
-    setCompletedPromptKeys([]); setPendingRecallMode('photo-to-name'); setActiveItemId(next.id); setAnswerState('idle'); setHadWrong(false); setUsedHelp(false); setAttempts(0);
+    setCompletedPromptKeys([]); setPendingRecallMode('photo-to-name'); setActiveItemId(next.id); setAnswerState('idle'); setHadWrong(false); setUsedHelp(false); setHintLevel(0); setAttempts(0);
     if (!next.learnedAt) setScreen('learning'); else await beginRecall(next, 'photo-to-name');
   };
   const beginRecall = async (item: WhosWhoItem, requestedMode?: RecallMode) => {
@@ -132,11 +135,13 @@ export default function SaathiWorkflow() {
   };
   const practice = async () => { if (!activeItem) return; await markLearningExposure(activeItem.id); await refresh(); await beginRecall(activeItem, pendingRecallMode); };
   const replay = async () => { if (activeItem && session) await persistGameEvent(session.id, { type: 'audio_replayed', itemId: activeItem.id, at: Date.now() }); setUsedHelp(true); };
-  const answer = async (itemId: string) => {
+  const answer = async (itemId: string, event?: GestureResponderEvent) => {
     if (!activeItem || !session || answerState === 'complete') return;
     const correct = itemId === activeItem.id; const now = Date.now(); const nextAttempts = attempts + 1;
-    await persistGameEvent(session.id, { type: 'tap', itemId: activeItem.id, correct, at: now, x: 0, y: 0, hintLevelAtTap: correct && !hadWrong && !usedHelp ? 0 : 4, solvedUnassisted: correct && !hadWrong && !usedHelp && attempts === 0 }); setAttempts(nextAttempts);
-    if (!correct) { await persistGameEvent(session.id, { type: 'hint_shown', itemId: activeItem.id, level: 4, at: Date.now() }); setHadWrong(true); setUsedHelp(true); setAnswerState('support'); return; }
+    const x = event?.nativeEvent.pageX ?? 0;
+    const y = event?.nativeEvent.pageY ?? 0;
+    await persistGameEvent(session.id, { type: 'tap', itemId: activeItem.id, correct, at: now, x, y, hintLevelAtTap: hintLevel as 0 | 1 | 2 | 3 | 4, solvedUnassisted: correct && !hadWrong && !usedHelp && attempts === 0 }); setAttempts(nextAttempts);
+    if (!correct) { const nextHintLevel = Math.min(4, hintLevel + 1); await persistGameEvent(session.id, { type: 'hint_shown', itemId: activeItem.id, level: nextHintLevel, at: Date.now() }); setHintLevel(nextHintLevel); setHadWrong(true); setUsedHelp(true); setAnswerState('support'); return; }
     const result = hadWrong ? 'incorrect' : usedHelp ? 'supported' : 'independent'; const review = await applyReviewResult(activeItem.id, result); if (review) await scheduleWhosWhoReminder(review.dueAt);
     const latency = Math.max(0, (now - session.startedAt) / 1000);
     const outcome: SessionOutcome = { scoredActions: nextAttempts, successRate: 1 / nextAttempts, unassistedRate: result === 'independent' ? 1 : 0, medianLatencySeconds: result === 'independent' ? latency : null, wasAbandoned: false, unassistedLatencies: result === 'independent' ? [latency] : [], successfulScoredActions: 1, unassistedScoredActions: result === 'independent' ? 1 : 0 };
@@ -151,7 +156,7 @@ export default function SaathiWorkflow() {
     const remainingPrompts = (await listWhosWhoItems()).filter((item) => !item.paused).flatMap((item) => recallModes.map((recallMode) => ({ item, recallMode }))).filter(({ item, recallMode }) => !completed.includes(`${item.id}:${recallMode}`));
     const nextPrompt = remainingPrompts.find(({ item, recallMode }) => item.id !== activeItem.id && recallMode !== mode) ?? remainingPrompts.find(({ item }) => item.id !== activeItem.id) ?? remainingPrompts[0];
     if (!nextPrompt) { setNotice('That is enough for now. Come again later for another familiar moment.'); setScreen('patient'); return; }
-    setActiveItemId(nextPrompt.item.id); setPendingRecallMode(nextPrompt.recallMode); setAnswerState('idle'); setHadWrong(false); setUsedHelp(false); setAttempts(0);
+    setActiveItemId(nextPrompt.item.id); setPendingRecallMode(nextPrompt.recallMode); setAnswerState('idle'); setHadWrong(false); setUsedHelp(false); setHintLevel(0); setAttempts(0);
     if (!nextPrompt.item.learnedAt) setScreen('learning'); else await beginRecall(nextPrompt.item, nextPrompt.recallMode);
   };
   const leaveActivity = async () => { if (session && activeItem) { await abandonWhosWhoSession(session); const review = await applyReviewResult(activeItem.id, 'distress'); if (review) await scheduleWhosWhoReminder(review.dueAt); } setSession(null); setAnswerState('idle'); setScreen('patient'); await refresh(); };
@@ -163,7 +168,7 @@ export default function SaathiWorkflow() {
   if (screen === 'manager') return <Layout><Header title={copy.whosWhoTitle} eyebrow={copy.dashboardTitle} /><Text style={styles.body}>New memories always begin with Learning before any recall question.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}{archiveCandidate ? <View style={styles.archive}><Text style={styles.panelTitle}>Archive {archiveCandidate.name}?</Text><Text style={styles.body}>This is reversible. The memory will be hidden from patient activities.</Text><ActionButton label="Archive memory" onPress={archive} variant="secondary" /><ActionButton label="Keep memory" onPress={() => setArchiveCandidate(null)} variant="quiet" /></View> : null}<ActionButton label={copy.addPerson} onPress={() => openEditor()} />{items.length ? <View style={styles.stack}>{items.map((item) => <MemberRow key={item.id} member={item} onEdit={() => openEditor(item)} onArchive={() => setArchiveCandidate(item)} labels={{ edit: copy.editPerson, archive: copy.archive, learningOnly: copy.learningOnly }} />)}</View> : <Notice>Add a familiar person, place, or object to begin.</Notice>}<ActionButton label={copy.dashboardTitle} onPress={() => setScreen('dashboard')} variant="quiet" /></Layout>;
   if (screen === 'editor') return <Layout><Header title={editor.id ? copy.editPerson : copy.addPerson} eyebrow={copy.whosWhoTitle} /><Text style={styles.body}>Choose a photo and record the name and optional personal note in a familiar voice.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.photo}><Portrait uri={editor.photoUri ?? undefined} name={editor.name || copy.photo} size={150} /><ActionButton label={editor.photoUri ? 'Choose another photo' : 'Choose a photo'} onPress={selectPhoto} variant="secondary" /></View><View style={styles.stack}><Field label={copy.name} value={editor.name} onChangeText={(name) => setEditor((value) => ({ ...value, name }))} /><Field label={copy.memberRelationship} value={editor.relationship} onChangeText={(relationship) => setEditor((value) => ({ ...value, relationship }))} /><Field label={copy.personalNote} value={editor.personalNote} onChangeText={(personalNote) => setEditor((value) => ({ ...value, personalNote }))} multiline /></View><View style={styles.stack}><AudioCapture label={copy.nameAudio} uri={editor.nameAudioUri} onCaptured={(nameAudioUri) => setEditor((value) => ({ ...value, nameAudioUri }))} onProblem={setNotice} /><AudioCapture label={copy.noteAudio} uri={editor.noteAudioUri} onCaptured={(noteAudioUri) => setEditor((value) => ({ ...value, noteAudioUri }))} onProblem={setNotice} /></View><ActionButton label={editor.learningOnly ? 'Learning only: on' : 'Learning only: off'} onPress={() => setEditor((value) => ({ ...value, learningOnly: !value.learningOnly }))} variant="secondary" /><ActionButton label={copy.saveMemory} onPress={saveMemory} /><ActionButton label={copy.cancel} onPress={() => setScreen('manager')} variant="quiet" /></Layout>;
   if (screen === 'learning' && activeItem) return <Layout patient><Header title={`${copy.meet} ${activeItem.name}`} eyebrow={copy.whosWhoTitle} /><View style={styles.frame}><Portrait uri={activeItem.photoUri ?? undefined} name={activeItem.name} size={250} /><Text style={styles.frameName}>{activeItem.name}</Text><Text style={styles.relationship}>{activeItem.relationship}</Text>{activeItem.personalNote ? <Text style={styles.note}>{activeItem.personalNote}</Text> : null}</View><AudioReplay uri={activeItem.nameAudioUri} label={copy.hearAgain} /><ActionButton label={copy.practiceNow} onPress={practice} /><ActionButton label={copy.home} onPress={leaveActivity} variant="quiet" /></Layout>;
-  if (screen === 'recall' && activeItem) return <Layout patient><Header title={mode === 'photo-to-name' ? copy.chooseName : mode === 'name-to-photo' ? copy.choosePhotoForName : copy.choosePhotoForClue} eyebrow={copy.whosWhoTitle} />{mode === 'photo-to-name' ? <View style={styles.frame}><Portrait uri={activeItem.photoUri ?? undefined} name={activeItem.name} size={230} /></View> : mode === 'name-to-photo' ? <View style={styles.prompt}><Text style={styles.frameName}>{activeItem.name}</Text></View> : <View style={styles.prompt}><Text style={styles.relationship}>{activeItem.relationship}</Text>{activeItem.personalNote ? <Text style={styles.note}>{activeItem.personalNote}</Text> : null}</View>}<AudioReplay uri={activeItem.nameAudioUri} label={copy.hearAgain} onReplay={replay} /><View style={mode === 'photo-to-name' ? styles.stack : styles.photoChoices}>{choices.map((item) => mode === 'photo-to-name' ? <ActionButton key={item.id} label={`🔊  ${item.name}`} onPress={() => answer(item.id)} variant={answerState === 'support' && item.id === activeItem.id ? 'secondary' : 'primary'} /> : <PhotoAnswer key={item.id} item={item} onPress={() => answer(item.id)} />)}</View>{answerState === 'support' ? <Notice tone="support">{`${copy.calmHint} ${activeItem.name}. Please tap ${activeItem.name} when you are ready.`}</Notice> : null}{answerState === 'complete' ? <Notice>{copy.gentleConfirm}</Notice> : null}<ActionButton label={answerState === 'complete' ? copy.backToActivity : copy.home} onPress={leaveActivity} variant={answerState === 'complete' ? 'primary' : 'quiet'} /></Layout>;
+  if (screen === 'recall' && activeItem) return <Layout patient><Header title={mode === 'photo-to-name' ? copy.chooseName : mode === 'name-to-photo' ? copy.choosePhotoForName : copy.choosePhotoForClue} eyebrow={copy.whosWhoTitle} />{mode === 'photo-to-name' ? <View style={styles.frame}><Portrait uri={activeItem.photoUri ?? undefined} name={activeItem.name} size={230} /></View> : mode === 'name-to-photo' ? <View style={styles.prompt}><Text style={styles.frameName}>{activeItem.name}</Text></View> : <View style={styles.prompt}><Text style={styles.relationship}>{activeItem.relationship}</Text>{activeItem.personalNote ? <Text style={styles.note}>{activeItem.personalNote}</Text> : null}</View>}<AudioReplay uri={activeItem.nameAudioUri} label={copy.hearAgain} onReplay={replay} /><View style={mode === 'photo-to-name' ? styles.stack : styles.photoChoices}>{choices.map((item) => mode === 'photo-to-name' ? <ActionButton key={item.id} label={`🔊  ${item.name}`} onPress={(event) => answer(item.id, event)} variant={answerState === 'support' && item.id === activeItem.id ? 'secondary' : 'primary'} /> : <PhotoAnswer key={item.id} item={item} onPress={(event) => answer(item.id, event)} />)}</View>{answerState === 'support' ? <Notice tone="support">{`${copy.calmHint} ${activeItem.name}. Please tap ${activeItem.name} when you are ready.`}</Notice> : null}{answerState === 'complete' ? <Notice>{copy.gentleConfirm}</Notice> : null}<ActionButton label={answerState === 'complete' ? copy.backToActivity : copy.home} onPress={leaveActivity} variant={answerState === 'complete' ? 'primary' : 'quiet'} /></Layout>;
   return <Layout patient><View style={styles.patientHead}><View><Text style={styles.greeting}>{copy.patientGreeting}{patientDisplayName ? ',' : ''}</Text>{patientDisplayName ? <Text style={styles.patientName}>{patientDisplayName}</Text> : null}</View><View style={styles.people}><Portrait name={patientDisplayName || 'Patient'} size={68} /><Portrait name={setup.guardianName || 'Caregiver'} size={68} /></View></View><Text style={styles.section}>Choose an activity</Text><View style={styles.stack}><View style={styles.game}><Text style={styles.overline}>{copy.ready}</Text><Text style={styles.panelTitle}>{copy.whosWhoTitle}</Text><Text style={styles.body}>{items.length ? 'Familiar faces, names, and gentle reminders.' : 'A caregiver can add familiar memories when you are ready.'}</Text><ActionButton label={copy.continue} onPress={openActivity} disabled={!items.length} /></View></View>{notice ? <Notice>{notice}</Notice> : null}<ActionButton label={copy.caregiverArea} onPress={() => { setAuthMode('signIn'); setNotice(''); setScreen('login'); }} variant="quiet" /></Layout>;
 }
 

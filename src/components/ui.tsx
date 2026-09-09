@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 
 import { theme } from '../theme';
 
 type ActionButtonProps = {
   label: string;
-  onPress: () => void;
+  onPress: (event: GestureResponderEvent) => void;
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
   disabled?: boolean;
   compact?: boolean;

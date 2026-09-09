@@ -28,12 +28,14 @@ type GameProps = {
   difficulty: number                    // 0–1, from the controller
   content: ContentPack                  // regional, family-generated
   onEvent: (e: GameEvent) => void       // telemetry, every interaction
-  onComplete: (r: SessionResult) => void
+  onComplete: () => void
 }
 
 type GameEvent =
   | { type: 'prompt_shown'; itemId: string; at: number }
-  | { type: 'tap'; itemId: string; correct: boolean; at: number; x: number; y: number }
+  | { type: 'tap'; itemId: string; correct: boolean; at: number; x: number; y: number;
+      hintLevelAtTap: 0 | 1 | 2 | 3 | 4; solvedUnassisted: boolean;
+      sequenceViolation?: boolean }
   | { type: 'hint_shown'; itemId: string; level: number; at: number }
   | { type: 'audio_replayed'; itemId: string; at: number }
   | { type: 'abandoned'; at: number }
