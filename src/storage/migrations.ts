@@ -59,6 +59,13 @@ export const MIGRATIONS: Migration[] = [
       await db.execAsync('ALTER TABLE days_plan_items ADD COLUMN archived_at INTEGER;');
     },
   },
+  {
+    version: 6,
+    name: 'days_plan.media',
+    up: async (db) => {
+      await db.execAsync('ALTER TABLE days_plan_items ADD COLUMN image_uri TEXT; ALTER TABLE days_plan_items ADD COLUMN audio_uri TEXT;');
+    },
+  },
 ];
 
 export const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

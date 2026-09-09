@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ActionButton, Field, Notice } from './ui';
+import { AudioCapture, AudioReplay } from './audio';
 import { theme } from '../theme';
 import type { DaysPlanItem } from '../storage/types';
 import type { GameEvent } from '../services/adaptive/types';
 import { daysPlanOptionCount } from '../services/adaptive/difficulty';
 import type { ControllerState } from '../services/adaptive/types';
+import { pickAndPersistPhoto } from '../storage/media';
 
 export type { DaysPlanItem } from '../storage/types';
 
@@ -30,6 +32,7 @@ export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onE
   const [supportShown, setSupportShown] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [started, setStarted] = useState(false);
+  const [mediaHintShown, setMediaHintShown] = useState(false);
 
   const activeItem = items[activeIndex];
   const eveningChoices = activeItem ? [activeItem, ...items.filter((item) => item.id !== activeItem.id)].slice(0, daysPlanOptionCount(controllerState, items.length)) : [];
@@ -37,6 +40,7 @@ export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onE
     if (!activeItem) return;
     if (recordTap) await onEvent({ type: 'tap', itemId: activeItem.id, correct: true, at: Date.now(), x: 0, y: 0, hintLevelAtTap: supportShown ? 1 : 0, solvedUnassisted: mode === 'evening' && !supportShown });
     setSupportShown(false);
+    setMediaHintShown(false);
     if (activeIndex >= items.length - 1) {
       setCompleted(true);
       setStarted(false);
@@ -62,6 +66,7 @@ export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onE
     setMode(nextMode);
     setActiveIndex(0);
     setSupportShown(false);
+    setMediaHintShown(false);
     setCompleted(false);
     setStarted(true);
   };
@@ -69,12 +74,16 @@ export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onE
     setMode('choose');
     setActiveIndex(0);
     setSupportShown(false);
+    setMediaHintShown(false);
     setCompleted(false);
     setStarted(false);
   };
   const leave = async () => {
     if (started) await onAbandon();
     onExit();
+  };
+  const replayReminder = async () => {
+    if (activeItem?.audioUri) await onEvent({ type: 'audio_replayed', itemId: activeItem.id, at: Date.now() });
   };
 
   if (mode === 'choose') {
@@ -138,6 +147,10 @@ export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onE
         <Text style={styles.time}>{activeItem.time}</Text>
         <Text style={styles.cardTitle}>{activeItem.title}</Text>
         <Text style={styles.cardDetail}>{activeItem.detail}</Text>
+        {!isEvening || mediaHintShown ? <View style={styles.mediaStack}>
+          {activeItem.imageUri ? <Image source={{ uri: activeItem.imageUri }} accessibilityLabel={`Reminder image for ${activeItem.title}`} style={styles.reminderImage} /> : null}
+          {activeItem.audioUri ? <AudioReplay uri={activeItem.audioUri} label="Hear this reminder" onReplay={() => { void replayReminder(); }} /> : null}
+        </View> : null}
       </View>
 
       {isEvening ? (
@@ -150,9 +163,9 @@ export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onE
       )}
 
       {supportShown ? (
-        <Notice tone="support">{`That’s all right. This was ${activeItem.title.toLowerCase()}. Choose the green button when you are ready.`}</Notice>
+        <Notice tone="support">{`That’s all right. This was ${activeItem.title.toLowerCase()}. Look at the reminder and choose it when you are ready.`}</Notice>
       ) : null}
-      <ActionButton label="Show a gentle clue" onPress={async () => { if (!supportShown) { await onEvent({ type: 'hint_shown', itemId: activeItem.id, level: 1, at: Date.now() }); setSupportShown(true); } }} variant="quiet" disabled={supportShown} />
+      {isEvening ? <ActionButton label="Show the reminder" onPress={async () => { if (!mediaHintShown) { await onEvent({ type: 'hint_shown', itemId: activeItem.id, level: 2, at: Date.now() }); setMediaHintShown(true); setSupportShown(true); } }} variant="quiet" disabled={mediaHintShown} /> : null}
       <ActionButton label="Home" onPress={leave} variant="quiet" />
     </View>
   );
@@ -171,9 +184,17 @@ export function DaysPlanEditor({ items, onSave, onCancel }: DaysPlanEditorProps)
   };
   const addItem = () => {
     if (draftItems.length >= 4) return;
-    setDraftItems((current) => [...current, { id: `plan-custom-${Date.now()}`, patientId: items[0]?.patientId ?? '', time: '', title: '', detail: '', archivedAt: null, updatedAt: Date.now() }]);
+    setDraftItems((current) => [...current, { id: `plan-custom-${Date.now()}`, patientId: items[0]?.patientId ?? '', time: '', title: '', detail: '', imageUri: null, audioUri: null, archivedAt: null, updatedAt: Date.now() }]);
   };
   const removeItem = (id: string) => setDraftItems((current) => current.filter((item) => item.id !== id));
+  const chooseImage = async (index: number) => {
+    try {
+      const uri = await pickAndPersistPhoto(`days-plan-${draftItems[index].id}`);
+      if (uri) updateItem(index, { imageUri: uri });
+    } catch {
+      // The editor remains usable when photo permission or selection fails.
+    }
+  };
 
   return (
     <View style={styles.editor}>
@@ -189,6 +210,11 @@ export function DaysPlanEditor({ items, onSave, onCancel }: DaysPlanEditorProps)
             <Field label="Time or part of day" value={item.time} onChangeText={(time) => updateItem(index, { time })} placeholder="This morning" />
             <Field label="What is happening?" value={item.title} onChangeText={(title) => updateItem(index, { title })} placeholder="Have tea together" />
             <Field label="A familiar detail" value={item.detail} onChangeText={(detail) => updateItem(index, { detail })} placeholder="A warm cup at home" multiline />
+            <View style={styles.mediaEditor}>
+              {item.imageUri ? <Image source={{ uri: item.imageUri }} accessibilityLabel={`Selected image for ${item.title || 'this reminder'}`} style={styles.editorImage} /> : null}
+              <ActionButton label={item.imageUri ? 'Change reminder image' : 'Add reminder image'} onPress={() => { void chooseImage(index); }} variant="secondary" />
+              <AudioCapture label="Reminder audio" uri={item.audioUri} onCaptured={(audioUri) => updateItem(index, { audioUri })} onProblem={() => undefined} />
+            </View>
           </View>
           <ActionButton label="Remove this moment" onPress={() => removeItem(item.id)} variant="quiet" compact />
         </View>
@@ -220,9 +246,13 @@ const styles = StyleSheet.create({
   time: { color: theme.colors.leaf, fontSize: theme.type.patientSmall, fontWeight: '800' },
   cardTitle: { color: theme.colors.ink, fontSize: 32, lineHeight: 40, fontWeight: '800' },
   cardDetail: { color: theme.colors.mutedInk, fontSize: theme.type.patient, lineHeight: 34 },
+  mediaStack: { gap: 12, alignItems: 'center' },
+  reminderImage: { width: '100%', maxWidth: 280, height: 150, borderRadius: theme.radius.media, backgroundColor: theme.colors.leafSoft },
   question: { color: theme.colors.ink, fontSize: theme.type.patient, lineHeight: 32, fontWeight: '800' },
   stack: { gap: 14 },
   editCard: { gap: 16, padding: 20, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.control, backgroundColor: theme.colors.white },
   cardNumber: { color: theme.colors.leaf, fontSize: theme.type.guardian, fontWeight: '800' },
   editorFields: { gap: 16 },
+  mediaEditor: { gap: 12 },
+  editorImage: { width: '100%', height: 160, borderRadius: theme.radius.media, backgroundColor: theme.colors.leafSoft },
 });

@@ -30,6 +30,8 @@ export type DaysPlanItem = {
   time: string;
   title: string;
   detail: string;
+  imageUri: string | null;
+  audioUri: string | null;
   archivedAt: number | null;
   updatedAt: number;
 };
