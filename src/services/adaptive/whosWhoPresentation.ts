@@ -1,4 +1,5 @@
 import type { ControllerState } from './types'
+import { difficultyLevel } from './difficulty'
 
 /**
  * Converts the bounded controller value into presentation choices only. The
@@ -6,7 +7,7 @@ import type { ControllerState } from './types'
  */
 export function whosWhoOptionCount(state: ControllerState | null, availableChoices: number): number {
   const difficulty = state?.difficulty ?? 0.4
-  const requested = difficulty < 0.33 ? 2 : difficulty < 0.67 ? 3 : 4
+  const requested = difficultyLevel(difficulty) === 'gentle' ? 2 : difficultyLevel(difficulty) === 'steady' ? 3 : 4
   return Math.max(1, Math.min(requested, availableChoices))
 }
 

@@ -24,6 +24,16 @@ export type WhosWhoItem = {
 
 export type WhosWhoDraft = Omit<WhosWhoItem, 'id' | 'patientId' | 'archivedAt' | 'learnedAt' | 'reviewStep' | 'dueAt' | 'consecutiveSupport' | 'paused' | 'createdAt' | 'updatedAt'>;
 
+export type DaysPlanItem = {
+  id: string;
+  patientId: string;
+  time: string;
+  title: string;
+  detail: string;
+  archivedAt: number | null;
+  updatedAt: number;
+};
+
 export type StoredSession = {
   id: string;
   patientId: string;
@@ -35,9 +45,21 @@ export type StoredSession = {
   companionPresent: boolean;
 };
 
+export type StoredDaysPlanSession = {
+  id: string;
+  patientId: string;
+  gameId: 'days_plan';
+  phase: 'morning' | 'evening';
+  startedAt: number;
+  endedAt: number | null;
+  abandoned: boolean;
+  companionPresent: boolean;
+};
+
 export type LocalSnapshot = {
   items: WhosWhoItem[];
-  sessions: StoredSession[];
+  daysPlanItems: DaysPlanItem[];
+  sessions: Array<StoredSession | StoredDaysPlanSession>;
   events: Array<{ id: string; sessionId: string; seq: number; event: GameEvent }>;
   outcomes: Array<{ sessionId: string; outcome: SessionOutcome }>;
   controllerStates: ControllerState[];

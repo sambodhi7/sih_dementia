@@ -42,6 +42,23 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: 'days_plan.items',
+    up: async (db) => {
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS days_plan_items (id TEXT PRIMARY KEY, patient_id TEXT NOT NULL, time TEXT NOT NULL, title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_days_plan_patient ON days_plan_items(patient_id, updated_at);
+      `);
+    },
+  },
+  {
+    version: 5,
+    name: 'days_plan.archive_removed_items',
+    up: async (db) => {
+      await db.execAsync('ALTER TABLE days_plan_items ADD COLUMN archived_at INTEGER;');
+    },
+  },
 ];
 
 export const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

@@ -13,7 +13,7 @@ let writeTail: Promise<void> = Promise.resolve();
 
 export const reviewIntervals = [30_000, 60_000, 120_000, 240_000, 480_000, 86_400_000, 259_200_000, 604_800_000, 1_209_600_000];
 
-export const emptySnapshot = (): LocalSnapshot => ({ items: [], sessions: [], events: [], outcomes: [], controllerStates: [], controllerStateChanges: [], settings: {} });
+export const emptySnapshot = (): LocalSnapshot => ({ items: [], daysPlanItems: [], sessions: [], events: [], outcomes: [], controllerStates: [], controllerStateChanges: [], settings: {} });
 export const makeId = () => Crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const asBool = (value: unknown) => Boolean(value);
 
@@ -36,6 +36,7 @@ export async function loadWeb() {
       webSnapshot = { ...emptySnapshot(), ...JSON.parse((await storage.default.getItem(WEB_KEY)) ?? '') } as LocalSnapshot;
       webSnapshot.controllerStates ??= [];
       webSnapshot.controllerStateChanges ??= [];
+      webSnapshot.daysPlanItems ??= [];
     } catch { webSnapshot = emptySnapshot(); }
   }
   return webSnapshot;

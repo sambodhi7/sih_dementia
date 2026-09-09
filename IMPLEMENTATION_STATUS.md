@@ -185,18 +185,17 @@ Remaining:
 - `localStore.ts` writes raw events immediately and records outcomes/controller trajectory during native session close.
 - Native session closing excludes companion-present latency samples from calibration.
 
-### Not implemented as dedicated modules
+### Current adaptive implementation
+
+The current branch now has adaptive modules under `src/services/adaptive/`, including event extraction, registry/configuration, calibration, safety, tracking, and session-end updates. `src/services/patient-metrics/` also contains profile metric aggregation. Day's Plan sessions now pass their explicit `morning` or `evening` phase into extraction and controller updates.
+
+### Still not implemented as dedicated product surfaces
 
 There is currently no source module for:
 
-- Event-to-outcome extraction for Day's Plan, Who's Who, or Recipe.
-- Patient profile metric aggregation.
-- Adaptive controller calibration/tracking/frozen decisions.
-- A reusable `onSessionEnd` integration point returning `NextConfig`.
-- Controller-state restoration/reading for configuring the next session.
 - Dashboard trend or support-needed summaries.
 
-`finishWhosWhoSession` currently contains a small inline difficulty update for native storage. Treat it as transitional. Move that logic into an adaptive controller after extractors and controller rules are implemented, keeping the canonical types in `src/adaptive/types.ts`.
+Session close now delegates adaptive updates through `src/services/adaptive/`. The remaining work is to keep all future game producers on that boundary and expose the resulting metrics in caregiver-facing screens.
 
 ### Contract risks to resolve
 
@@ -209,12 +208,12 @@ There is currently no source module for:
 
 ## 5. Planned Games: Current State
 
-The full design is in `docs/GAMES.md`. Only Who's Who has an active patient flow.
+The full design is in `docs/GAMES.md`. Who's Who and Day's Plan have active patient flows.
 
 | Game | Current state | Next implementation owner |
 |---|---|---|
 | Who's Who | Implemented local-first learning, recall, review scheduling, audio/photo memory management, and telemetry path. Needs extractor/controller cleanup and UX hardening. | `src/SaathiWorkflow.tsx`, `src/storage/localStore.ts`, new `src/games/whosWho/*` or equivalent |
-| Day's Plan | Types and design only. No morning/evening screens, caregiver plan editor, phase-aware sessions, or recall metrics. | New game module plus `src/storage` plan persistence |
+| Day's Plan | Local-first reminder editor, SQLite migration/table, morning and evening patient phases, demo phase switch, raw event persistence, phase-aware extraction, and controller session close. | Add audio prompts, focused automated tests, richer caregiver scheduling, and dashboard presentation |
 | Recipe | Types/design only. No recipe screen, ingredient grid, narration, or sequence telemetry. Extractor is explicitly a known issue. | New Recipe game module and extractor; fix before trusting metrics |
 | Song Circle | Seed card only (`coming soon`). No recorder list, suggested theme, or local recording library. It is dashboard/engagement data, not controller data. | New local audio-library module and patient screen |
 | Packing | Design only. No occasion, item grid, suitcase strip, or omission telemetry. | New game module; reuse shared grid primitives |
@@ -274,7 +273,7 @@ The next handoff should run `npm run typecheck`, then replace the placeholder te
 1. **Stabilize the active Who's Who slice.** Extract it from the monolithic workflow, capture real tap coordinates, implement the visible hint ladder, clarify completion/abandonment behavior, and add unit tests for review and event semantics.
 2. **Create adaptive modules.** Implement extractors first, then the controller, then make session close call those modules rather than updating difficulty inline.
 3. **Finish the persistence contract.** Add controller-state reads, web parity where needed, migration tests, and the one-way outbox sync worker.
-4. **Build Day's Plan.** It exercises phase-aware sessions and the most important recall metric without requiring new media infrastructure.
+4. **Harden Day's Plan.** Add audio prompts, focused tests, richer caregiver scheduling, and dashboard presentation.
 5. **Build Recipe.** Fix and test its extractor before relying on its metrics; keep sequence violations distinct from ordinary taps.
 6. **Add Song Circle, Packing, and Skill Transmission.** These are dashboard/engagement or executive/procedural activities and must not be accidentally routed through the three-game controller union.
 7. **Build the caregiver dashboard and remote media workflow.** Use baseline/support-needed language and preserve local device authority.

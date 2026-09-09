@@ -5,6 +5,7 @@ import { RecallInput, answerChoices } from '../../../games/whosWho/model'
 import { createInitialState, REGISTRY } from '../registry'
 import type { GameEvent, SessionRecord } from '../types'
 import { whosWhoChoiceIds, whosWhoOptionCount } from '../whosWhoPresentation'
+import { daysPlanOptionCount, difficultyLabel, difficultyLevel, recipeIngredientCount } from '../difficulty'
 import type { WhosWhoItem } from '../../../storage/types'
 
 function check(condition: boolean, message: string): void {
@@ -40,6 +41,11 @@ check(companionMetrics.medianResponseLatencySeconds === null, 'companion latency
 
 check(whosWhoOptionCount({ ...state, difficulty: 0.2 }, 4) === 2, 'lower difficulty reduces Who’s Who choices')
 check(whosWhoOptionCount({ ...state, difficulty: 0.8 }, 4) === 4, 'higher difficulty may use four Who’s Who choices')
+check(difficultyLevel(0.2) === 'gentle' && difficultyLevel(0.5) === 'steady' && difficultyLevel(0.8) === 'stretch', 'all named difficulty levels are bounded')
+check(difficultyLabel(0.8) === 'Stretching practice', 'difficulty labels are caregiver-readable')
+check(daysPlanOptionCount({ ...state, gameId: 'days_plan', difficulty: 0.2 }, 4) === 2, 'Day’s Plan gentle level uses two choices')
+check(daysPlanOptionCount({ ...state, gameId: 'days_plan', difficulty: 0.8 }, 4) === 4, 'Day’s Plan stretch level can use four choices')
+check(recipeIngredientCount({ ...state, gameId: 'recipe', difficulty: 0.2 }) === 4 && recipeIngredientCount({ ...state, gameId: 'recipe', difficulty: 0.8 }) === 6, 'Recipe difficulty maps to ingredient count')
 const choices = whosWhoChoiceIds('two', ['one', 'two', 'three', 'four'], 3, 'prompt-1')
 check(choices.length === 3 && choices.includes('two'), 'adaptive choices retain the correct memory')
 check(JSON.stringify(choices) === JSON.stringify(whosWhoChoiceIds('two', ['one', 'two', 'three', 'four'], 3, 'prompt-1')), 'choice ordering stays stable while answering')

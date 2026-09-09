@@ -126,6 +126,13 @@ export const seed = {
     photoUri: '',
     reminder: { time: '', title: '', detail: '' },
   },
+  daysPlan: {
+    items: [
+      { id: 'plan-morning-tea', time: 'This morning', title: 'Have tea together', detail: 'A warm cup at home with someone familiar.' },
+      { id: 'plan-afternoon-visit', time: 'This afternoon', title: 'A family visit', detail: 'Someone you know may come by for a little while.' },
+      { id: 'plan-evening-rest', time: 'This evening', title: 'Rest after dinner', detail: 'A quiet moment at home before bedtime.' },
+    ],
+  },
   games: [
     { id: 'whos-who', title: 'Who’s Who', subtitle: 'Familiar faces and names', badge: 'Ready', tone: 'leaf' },
     { id: 'days-plan', title: 'Day’s Plan', subtitle: 'Gentle routine reminders', badge: 'Later today', tone: 'neutral' },
