@@ -6,7 +6,7 @@ const english = {
   chooseLanguageHint: 'You can change this later in Caregiver Area.',
   continue: 'Continue',
   guardianSignIn: 'Guardian sign in',
-  setUpSaathi: 'Set up Saathi',
+  setUpSaathi: 'Set up Loom',
   guardianSetup: 'Set up your care circle',
   guardianSetupHint: 'These details stay on this device during the demo.',
   guardianName: 'Your name',

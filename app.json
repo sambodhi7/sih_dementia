@@ -11,7 +11,13 @@
       "web"
     ],
     "android": {
-      "package": "in.saathi.cognitivecare"
+      "package": "in.saathi.cognitivecare",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "splash": {
       "resizeMode": "contain",
@@ -21,7 +27,13 @@
       "expo-sqlite",
       ["expo-audio", { "microphonePermission": "Allow Saathi to record a family voice note." }],
       ["expo-image-picker", { "photosPermission": "Allow Saathi to choose a family photo or save a shared skill moment." }],
-      "expo-notifications"
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "539499d1-b864-41ba-a924-3f96ee17fbfe"
+      }
     ]
   }
 }

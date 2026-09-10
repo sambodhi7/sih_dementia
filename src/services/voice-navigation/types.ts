@@ -1,4 +1,4 @@
-export type VoiceNavigationIntent = 'start_whos_who' | 'repeat' | 'go_home' | 'caregiver_area' | 'stop' | 'unknown';
+export type VoiceIntent = 'start_whos_who' | 'repeat' | 'go_home' | 'caregiver_area' | 'stop' | 'unknown';
 
 export type VoiceNavigationRequest = {
   clientThreadId: string;
@@ -9,7 +9,7 @@ export type VoiceNavigationRequest = {
 };
 
 export type VoiceNavigationResponse = {
-  intent: VoiceNavigationIntent;
+  intent: VoiceIntent;
   confidence: number;
   transcript?: string;
 };

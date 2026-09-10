@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: "Saathi"
+name: "Loom"
 description: "A calm, language-flexible cognitive-care companion that feels like opening a family photo album, not using a medical test."
 colors:
   primary: "#35634B"
@@ -50,13 +50,13 @@ components:
   guardian-danger-action: { backgroundColor: "danger", textColor: "white", rounded: "control" }
 ---
 
-# Saathi Design System
+# Loom Design System
 
 ## Overview
 
 ### Creative North Star
 
-Saathi should feel like a familiar family-photo album laid open on a quiet morning table: personal, unhurried, and tactile in its clarity. The patient never sees a clinical score or a test-taking surface. The one expressive device is the **Familiar Frame**: each memory is introduced as a large, well-lit portrait with a spoken relationship and a small contextual cue.
+Loom should feel like a familiar family-photo album laid open on a quiet morning table: personal, unhurried, and tactile in its clarity. The patient never sees a clinical score or a test-taking surface. The one expressive device is the **Familiar Frame**: each memory is introduced as a large, well-lit portrait with a spoken relationship and a small contextual cue. Loom's leaf mark is a quiet symbol of care and continuity; it replaces letterform monograms wherever the app name appears.
 
 ### Product context and register
 
@@ -80,9 +80,9 @@ Each language pack declares its bundled `Saathi Patient` and optional `Saathi Di
 
 ## Layout
 
-Patient screens use a single-column composition with 24px side gutters, 20px gaps, and safe-area padding. Keep the current activity above the fold; there is no dense bottom navigation. On a tablet, preserve one primary activity column rather than adding information beside it. Who’s Who uses a large photo frame followed by two or three full-width answer tiles; do not use a compact grid for names. Guardian screens may use cards and charts, but their primary actions remain visible without horizontal scrolling.
+Patient screens use a single-column composition with 24px side gutters, 20px gaps, and safe-area padding. The member dashboard uses a three-item bottom navigation—Home, Daily routine, and Settings—with full text labels and 64px targets; active state is leaf green, never colour alone. Keep the current activity above the fold. On a tablet, preserve one primary activity column rather than adding information beside it. Who’s Who uses a large photo frame followed by two or three full-width answer tiles; do not use a compact grid for names. Guardian screens may use cards and charts, but their primary actions remain visible without horizontal scrolling.
 
-Patient navigation is deliberately shallow: a persistent, localized Home action and a persistent, localized Hear again action are the only global activity controls. Leaving an activity returns directly to Home without a score or performance summary. Caregiver Area is visually separate, always labelled, and protected by PIN or device biometrics.
+Patient navigation is deliberately shallow: the member dashboard provides Home, Daily routine, and Settings, while active memory activities retain a persistent localized Home action and Hear again action. Leaving an activity returns directly to Home without a score or performance summary. Caregiver Area is visually separate, always labelled, and protected by PIN or device biometrics. Routine and medication reminders are caregiver-authored on-device data; patient-facing reminders provide calm guidance, never medical advice or confirmation that medication was taken.
 
 Support 200% system text scaling: cards grow vertically, labels wrap, and controls retain their minimum 64px height. Reserve image aspect ratio and feedback-space geometry so hints, audio replay, and sync changes do not shift controls unexpectedly.
 

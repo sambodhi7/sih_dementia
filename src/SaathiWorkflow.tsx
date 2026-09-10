@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, BackHandler, Image, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import type { GestureResponderEvent } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import type { ControllerState, GameEvent, SessionOutcome } from './services/adaptive/types';
 import { whosWhoChoiceIds, whosWhoOptionCount } from './services/adaptive/whosWhoPresentation';
@@ -11,6 +12,8 @@ import { ActionButton, Field, MemberRow, Notice, Portrait } from './components/u
 import { seed } from './data/seed';
 import { supabase } from './lib/supabase';
 import { pickAndPersistPhoto } from './storage/media';
+import { readRoutine, removeRoutineItem, saveRoutine } from './storage/routines';
+import type { RoutineItem } from './storage/routines';
 import { readControllerState } from './storage/controllerState';
 import { listDaysPlanItems, makeDaysPlanItems, saveDaysPlanItems } from './storage/daysPlan';
 import { archiveWhosWhoItem, chooseNextWhosWhoItem, getLocalSetting, initializeItems, listWhosWhoItems, markLearningExposure, saveWhosWhoItem, setLocalSetting } from './storage/items';
@@ -26,13 +29,16 @@ import { pickAndPersistSkillCompletionPhoto, persistSkillPromptAudio } from './s
 import { initializeSkillTransmission, listSkillCompletions, listSkillTransmissionItems, saveSkillPromptAudio, setSkillEnabled } from './storage/skillTransmission';
 import type { ActivitySession, SkillCompletion, SkillTransmissionItem } from './storage/types';
 
-type Screen = 'language' | 'onboarding' | 'login' | 'dashboard' | 'manager' | 'editor' | 'daysPlanEditor' | 'daysPlan' | 'patient' | 'learning' | 'recall' | 'waiting' | 'skills-manager' | 'skills-home' | 'skill-invitation' | 'skill-active' | 'skill-complete' | 'metrics';
+type Screen = 'language' | 'onboarding' | 'login' | 'dashboard' | 'manager' | 'editor' | 'daysPlanEditor' | 'daysPlan' | 'patient' | 'learning' | 'recall' | 'waiting' | 'skills-manager' | 'skills-home' | 'skill-invitation' | 'skill-active' | 'skill-complete' | 'metrics' | 'routineManager';
+type MemberTab = 'home' | 'routine' | 'settings';
 type Editor = WhosWhoDraft & { id?: string };
 type RecallMode = 'photo-to-name' | 'name-to-photo' | 'clue-to-photo';
 type CareProfile = { guardianName: string; relationship: string; patientName: string };
 const copy = seed.app.copy;
 const recallModes: RecallMode[] = ['photo-to-name', 'name-to-photo', 'clue-to-photo'];
 const emptyEditor = (): Editor => ({ name: '', relationship: '', personalNote: '', photoUri: null, nameAudioUri: null, noteAudioUri: null, learningOnly: false });
+const timeFromValue = (value: string) => { const [hour = 8, minute = 0] = value.split(':').map(Number); const date = new Date(); date.setHours(hour, minute, 0, 0); return date; };
+const timeValue = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
 function authProblemMessage(message?: string) {
   const normalized = message?.toLowerCase() ?? '';
@@ -98,6 +104,9 @@ export default function SaathiWorkflow() {
   const [daysPlanSession, setDaysPlanSession] = useState<StoredDaysPlanSession | null>(null);
   const [daysPlanController, setDaysPlanController] = useState<ControllerState | null>(null);
   const [companionPresent, setCompanionPresent] = useState(false);
+  const [routine, setRoutine] = useState<RoutineItem[]>([]);
+  const [routineDraft, setRoutineDraft] = useState({ title: '', detail: '', time: '08:00', kind: 'medication' as RoutineItem['kind'] });
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
 
   const language = useMemo(() => seed.languagePacks.find((item) => item.id === languageId) ?? seed.languagePacks[0], [languageId]);
   const patientDisplayName = setup.patientName.trim();
@@ -126,8 +135,16 @@ export default function SaathiWorkflow() {
     const stored = await getLocalSetting('patient-id'); const localPatientId = stored ?? patientId; if (stored) setPatientId(stored);
     const storedProfile = await getLocalSetting('care-profile');
     if (storedProfile) { try { setSetup(JSON.parse(storedProfile) as CareProfile); } catch { /* Ignore malformed local profile data. */ } }
-    await initializeSkillTransmission(localPatientId); await loadDaysPlan(localPatientId); await refresh(localPatientId); setReady(true);
+    await initializeSkillTransmission(localPatientId); await loadDaysPlan(localPatientId); await refresh(localPatientId); setRoutine(await readRoutine()); setReady(true);
   })(); }, []);
+
+  const updateRoutine = async (next: RoutineItem[]) => setRoutine(await saveRoutine(next));
+  const addRoutineItem = async () => {
+    if (!routineDraft.title.trim()) { setNotice('Add a clear reminder name first.'); return; }
+    await updateRoutine([...routine, { id: `routine-${Date.now()}`, title: routineDraft.title.trim(), detail: routineDraft.detail.trim(), time: routineDraft.time, kind: routineDraft.kind }]);
+    setRoutineDraft({ title: '', detail: '', time: '08:00', kind: 'medication' });
+    setNotice('This reminder is saved on this device.');
+  };
 
   const persistCareProfile = async (profile = setup) => setLocalSetting('care-profile', JSON.stringify(profile));
 
@@ -302,7 +319,7 @@ export default function SaathiWorkflow() {
     if (screen === 'recall' || screen === 'learning') { void leaveActivity(); return true; }
     if (screen === 'skill-invitation' || screen === 'skill-active') { void leaveSkillSession(); return true; }
     if (screen === 'skill-complete') { void finishSkillSession('patient'); return true; }
-    const destinations: Partial<Record<Screen, Screen>> = { onboarding: 'language', login: 'language', dashboard: 'language', manager: 'dashboard', editor: 'manager', daysPlanEditor: 'dashboard', daysPlan: 'patient', patient: 'language', waiting: 'patient', metrics: 'dashboard', 'skills-manager': 'dashboard', 'skills-home': 'patient' };
+    const destinations: Partial<Record<Screen, Screen>> = { onboarding: 'language', login: 'language', dashboard: 'language', manager: 'dashboard', editor: 'manager', daysPlanEditor: 'dashboard', daysPlan: 'patient', patient: 'language', waiting: 'patient', metrics: 'dashboard', routineManager: 'dashboard', 'skills-manager': 'dashboard', 'skills-home': 'patient' };
     const destination = destinations[screen];
     if (!destination) return false;
     setArchiveCandidate(null); setNotice(''); setScreen(destination);
@@ -313,6 +330,7 @@ export default function SaathiWorkflow() {
     return () => listener.remove();
   }, [goBack]);
   const currentHint = activeItem ? hintMessage(activeItem, hintLevel) : null;
+  if (screen === 'routineManager') return <Layout><Header title="Daily routine and reminders" eyebrow="Caregiver Area" onBack={goBack} /><Text style={styles.body}>Medication reminders are saved and scheduled on this device.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.stack}>{routine.map((item) => <View key={item.id} style={styles.routineRow}><Text style={styles.routineTime}>{item.time}</Text><Text style={styles.routineTitle}>{item.title}</Text><ActionButton label="Remove" onPress={async () => { setRoutine(await removeRoutineItem(routine, item.id)); }} variant="quiet" compact /></View>)}</View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>Add a reminder</Text><Field label="Reminder name" value={routineDraft.title} onChangeText={(title) => setRoutineDraft((value) => ({ ...value, title }))} /><Field label="Instructions" value={routineDraft.detail} onChangeText={(detail) => setRoutineDraft((value) => ({ ...value, detail }))} multiline /><ActionButton label={`Choose time: ${routineDraft.time}`} onPress={() => setTimePickerVisible(true)} variant="secondary" />{timePickerVisible ? <DateTimePicker value={timeFromValue(routineDraft.time)} mode="time" display="default" onChange={(_event, selectedTime) => { setTimePickerVisible(false); if (selectedTime) setRoutineDraft((value) => ({ ...value, time: timeValue(selectedTime) })); }} /> : null}<ActionButton label={routineDraft.kind === 'medication' ? 'Type: medication' : 'Type: routine'} onPress={() => setRoutineDraft((value) => ({ ...value, kind: value.kind === 'medication' ? 'activity' : 'medication' }))} variant="secondary" /><ActionButton label="Save local reminder" onPress={() => { void addRoutineItem(); }} /></View></Layout>;
   if (!ready) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>Preparing your local memory library…</Text></View></SafeAreaView>;
   if (screen === 'language') return <Layout><Header title={copy.chooseLanguage} eyebrow={seed.app.tagline} /><Text style={styles.body}>{copy.chooseLanguageHint}</Text><View style={styles.stack}>{seed.languagePacks.map((pack) => <ActionButton key={pack.id} label={`${pack.nativeLabel} · ${pack.label}`} onPress={() => setLanguageId(pack.id)} variant={languageId === pack.id ? 'primary' : 'secondary'} />)}</View><Notice>{`${language.label} voice prompts can be used offline.`}</Notice><View style={styles.stack}><ActionButton label={copy.continue} onPress={() => setScreen('onboarding')} /><ActionButton label={copy.guardianSignIn} onPress={() => { setAuthMode('signIn'); setNotice(''); setScreen('login'); }} variant="quiet" /><ActionButton label={copy.patientMode} onPress={() => setScreen('patient')} variant="quiet" /></View></Layout>;
   if (screen === 'onboarding') return <Layout><Header title={copy.guardianSetup} eyebrow="Step 1 of 2" onBack={goBack} /><Text style={styles.body}>Set up the care circle. Family media stays on this device.</Text><View style={styles.stack}><Field label={copy.guardianName} value={setup.guardianName} onChangeText={(guardianName) => setSetup({ ...setup, guardianName })} /><Field label={copy.relationship} value={setup.relationship} onChangeText={(relationship) => setSetup({ ...setup, relationship })} /><Field label={copy.patientName} value={setup.patientName} onChangeText={(patientName) => setSetup({ ...setup, patientName })} /></View>{notice ? <Notice tone="support">{notice}</Notice> : null}<ActionButton label={busy ? 'Setting up…' : copy.continue} onPress={async () => { const { data } = await supabase?.auth.getUser() ?? { data: null }; if (!data?.user) { setAuthMode('signUp'); setScreen('login'); } else if (await createCareCircle()) setScreen('dashboard'); }} disabled={busy} /></Layout>;
@@ -339,6 +357,7 @@ export default function SaathiWorkflow() {
 }
 
 const styles = StyleSheet.create({
+  routineRow: { flexDirection: 'row', gap: 14, alignItems: 'center', padding: 18, borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.white }, routineTime: { color: theme.colors.leaf, fontSize: theme.type.guardian, fontWeight: '800', minWidth: 52 }, routineTitle: { flex: 1, color: theme.colors.ink, fontSize: theme.type.guardian, fontWeight: '800' }, settingsPanel: { gap: 12, padding: 20, borderRadius: theme.radius.media, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface }, fieldLabel: { color: theme.colors.ink, fontSize: theme.type.guardian, fontWeight: '700' },
   photoChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, justifyContent: 'center' }, hint: { gap: 10 }, backButton: { alignSelf: 'flex-start', minHeight: 48, justifyContent: 'center', paddingHorizontal: 4 }, backText: { color: theme.colors.leaf, fontSize: theme.type.guardian, fontWeight: '800' },
   photoAnswer: { alignItems: 'center', width: 156, minHeight: 198, padding: 12, gap: 10, borderRadius: theme.radius.media, borderWidth: 2, borderColor: theme.colors.leaf, backgroundColor: theme.colors.white },
   photoAnswerText: { color: theme.colors.ink, fontSize: theme.type.patientSmall, fontWeight: '800', textAlign: 'center' }, waiting: { alignItems: 'center', gap: 16, padding: 28, backgroundColor: theme.colors.leafSoft, borderColor: theme.colors.leaf, borderWidth: 1, borderRadius: theme.radius.media }, skillFrame: { alignItems: 'center', gap: 16, padding: 22, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media }, completionPhoto: { width: '100%', aspectRatio: 4 / 3, borderRadius: theme.radius.media, backgroundColor: theme.colors.leafSoft }, sharedMoments: { gap: 14, padding: 18, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media }, momentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, justifyContent: 'space-between' }, momentCard: { width: '47%', gap: 6 }, momentPhoto: { width: '100%', aspectRatio: 4 / 3, borderRadius: theme.radius.control, backgroundColor: theme.colors.leafSoft }, momentTitle: { color: theme.colors.ink, fontSize: theme.type.guardian, fontWeight: '800' }, momentDate: { color: theme.colors.mutedInk, fontSize: theme.type.meta },

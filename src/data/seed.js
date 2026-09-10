@@ -5,14 +5,14 @@ const emptyMembers = [];
 // by a guardian on the device and stored locally; never ship fake family data.
 export const seed = {
   app: {
-    name: 'Saathi',
+    name: 'Loom',
     tagline: 'A familiar moment, together.',
     copy: {
       chooseLanguage: 'Choose a language',
       chooseLanguageHint: 'You can change this later in Caregiver Area.',
       continue: 'Continue',
       guardianSignIn: 'Guardian sign in',
-      setUpSaathi: 'Set up Saathi',
+      setUpSaathi: 'Set up Loom',
       guardianSetup: 'Set up your care circle',
       guardianSetupHint: 'These details stay on this device during the demo.',
       guardianName: 'Your name',
