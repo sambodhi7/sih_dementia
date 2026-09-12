@@ -52,8 +52,11 @@ export async function saveWeb() {
 }
 
 export function queuedWrite(work: () => Promise<void>) {
-  writeTail = writeTail.then(work).catch(() => undefined);
-  return writeTail;
+  const operation = writeTail.then(work);
+  // Keep the queue usable after failure, but let callers stop gameplay when
+  // persistence fails instead of reporting an unsaved action as successful.
+  writeTail = operation.catch(() => undefined);
+  return operation;
 }
 
 export { Platform };

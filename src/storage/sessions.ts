@@ -5,8 +5,8 @@ import { getDb, loadWeb, makeId, Platform, queuedWrite, saveWeb } from './db';
 import { enqueue } from './sync';
 import type { StoredDaysPlanSession, StoredSession } from './types';
 
-export async function startWhosWhoSession(patientId: string, itemId: string, companionPresent = false) {
-  const session: StoredSession = { id: makeId(), patientId, itemId, gameId: 'whos_who', startedAt: Date.now(), endedAt: null, abandoned: false, companionPresent };
+export async function startWhosWhoSession(patientId: string, itemId: string, companionPresent = false, gameId: StoredSession['gameId'] = 'whos_who') {
+  const session: StoredSession = { id: makeId(), patientId, itemId, gameId, startedAt: Date.now(), endedAt: null, abandoned: false, companionPresent };
   if (Platform.OS === 'web') await queuedWrite(async () => { const snapshot = await loadWeb(); snapshot.sessions.push(session); await saveWeb(); });
   else { const db = await getDb(); await db.withTransactionAsync(async () => { await db.runAsync('INSERT INTO sessions (id, patient_id, game_id, started_at, companion_present) VALUES (?, ?, ?, ?, ?)', [session.id, patientId, session.gameId, session.startedAt, companionPresent ? 1 : 0]); await enqueue(db, 'sessions', session.id); }); }
   return session;
@@ -144,9 +144,12 @@ export async function abandonWhosWhoSession(session: StoredSession) {
 }
 
 export async function readPatientSessionRecords(patientId: string, gameId?: GameId): Promise<SessionRecord[]> {
-  if (Platform.OS === 'web') { const snapshot = await loadWeb(); return snapshot.sessions.filter((session) => session.patientId === patientId && (!gameId || session.gameId === gameId)).map((session) => ({ session: { gameId: session.gameId, startedAt: session.startedAt, companionPresent: session.companionPresent }, events: snapshot.events.filter((event) => event.sessionId === session.id).sort((a, b) => a.seq - b.seq).map((event) => event.event) })); }
+  // Recipe v1 is a scaffolded family activity. Its gestures must not inflate
+  // cognitive scores or latency baselines; keep its raw session/event history.
+  if (gameId === 'recipe') return [];
+  if (Platform.OS === 'web') { const snapshot = await loadWeb(); return snapshot.sessions.filter((session) => session.gameId !== 'recipe' && session.patientId === patientId && (!gameId || session.gameId === gameId)).map((session) => ({ session: { gameId: session.gameId, startedAt: session.startedAt, companionPresent: session.companionPresent }, events: snapshot.events.filter((event) => event.sessionId === session.id).sort((a, b) => a.seq - b.seq).map((event) => event.event) })); }
   const db = await getDb();
-  const sessions = await db.getAllAsync<{ id: string; game_id: GameId; started_at: number; phase: 'morning' | 'evening' | null; companion_present: number }>(`SELECT id, game_id, started_at, phase, companion_present FROM sessions WHERE patient_id = ? ${gameId ? 'AND game_id = ?' : "AND game_id IN ('days_plan', 'whos_who', 'recipe')"} ORDER BY started_at ASC`, gameId ? [patientId, gameId] : [patientId]);
+  const sessions = await db.getAllAsync<{ id: string; game_id: GameId; started_at: number; phase: 'morning' | 'evening' | null; companion_present: number }>(`SELECT id, game_id, started_at, phase, companion_present FROM sessions WHERE patient_id = ? ${gameId ? 'AND game_id = ?' : "AND game_id IN ('days_plan', 'whos_who')"} ORDER BY started_at ASC`, gameId ? [patientId, gameId] : [patientId]);
   return Promise.all(sessions.map(async (stored) => { const events = await db.getAllAsync<{ payload: string }>('SELECT payload FROM events WHERE session_id = ? ORDER BY seq ASC', [stored.id]); const gameSession: GameSession = { gameId: stored.game_id, startedAt: stored.started_at, companionPresent: stored.companion_present === 1, ...(stored.phase ? { phase: stored.phase } : {}) }; return { session: gameSession, events: events.map((event) => JSON.parse(event.payload) as GameEvent) }; }));
 }
 

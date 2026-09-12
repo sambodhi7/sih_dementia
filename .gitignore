@@ -45,6 +45,7 @@ coverage/
 # TypeScript and bundler caches
 *.tsbuildinfo
 .tmp-test/
+.tmp-recipe-test/
 .cache/
 .parcel-cache/
 

@@ -81,7 +81,7 @@ export type DaysPlanItem = {
 export type StoredSession = {
   id: string;
   patientId: string;
-  gameId: 'whos_who';
+  gameId: 'whos_who' | 'recipe';
   itemId: string;
   startedAt: number;
   endedAt: number | null;
