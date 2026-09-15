@@ -19,6 +19,7 @@ export function ActionButton({ label, onPress, variant = 'primary', disabled = f
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
+      hitSlop={compact ? undefined : 4}
       onPress={(event) => { touchFeedback(); onPress(event); }}
       style={({ pressed }) => [
         styles.button,
@@ -101,7 +102,7 @@ export function MemberRow({ member, onEdit, onArchive, labels }: {
 }
 
 const styles = StyleSheet.create({
-  button: { minHeight: 64, paddingHorizontal: 20, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.leaf },
+  button: { minHeight: 56, paddingHorizontal: 20, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.leaf },
   compactButton: { minHeight: 40, paddingHorizontal: 12 },
   primary: { backgroundColor: theme.colors.leaf },
   secondary: { backgroundColor: theme.colors.white, borderColor: theme.colors.leaf },
