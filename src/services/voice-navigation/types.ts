@@ -1,4 +1,13 @@
-export type VoiceIntent = 'start_whos_who' | 'repeat' | 'go_home' | 'caregiver_area' | 'stop' | 'unknown';
+export type VoiceIntent =
+  | 'start_whos_who'
+  | 'start_recipe'
+  | 'start_days_plan'
+  | 'start_skills'
+  | 'repeat'
+  | 'go_home'
+  | 'caregiver_area'
+  | 'stop'
+  | 'unknown';
 
 export type VoiceNavigationRequest = {
   clientThreadId: string;

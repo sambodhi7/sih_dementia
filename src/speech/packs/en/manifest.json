@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "saathi-en-v1",
+  "languageCode": "en",
+  "displayName": "English",
+  "models": {
+    "tts": { "engine": "sherpa-onnx-vits", "model": "models/tts/model.onnx", "tokens": "models/tts/tokens.txt" },
+    "stt": { "engine": "sherpa-onnx-ctc", "model": "models/stt/model.int8.onnx", "tokens": "models/stt/tokens.txt" }
+  },
+  "pages": ["member.games", "member.routine", "member.settings"],
+  "commands": [
+    { "intent": "start_whos_who", "phrases": ["open who's who", "start who's who", "show family photos"] },
+    { "intent": "start_recipe", "phrases": ["open recipe", "start recipe"] },
+    { "intent": "start_days_plan", "phrases": ["open day's plan", "show today's plan"] },
+    { "intent": "start_skills", "phrases": ["open learn together", "choose a skill"] },
+    { "intent": "go_home", "phrases": ["go home", "show games"] },
+    { "intent": "repeat", "phrases": ["repeat", "say that again"] },
+    { "intent": "stop", "phrases": ["stop", "stop listening"] }
+  ]
+}

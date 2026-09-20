@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.routine",
+  "languageCode": "hi",
+  "title": "दिनचर्या",
+  "summary": "आज की योजना आपके देखभालकर्ता ने तैयार की है। जब सहज लगे, एक-एक कदम आगे बढ़ें।",
+  "utterances": [
+    { "id": "routine.intro", "groupId": "page", "kind": "description", "text": "आज की योजना आपके देखभालकर्ता ने तैयार की है। जब सहज लगे, एक-एक कदम आगे बढ़ें।" }
+  ]
+}

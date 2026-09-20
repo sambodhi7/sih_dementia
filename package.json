@@ -9,9 +9,12 @@
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "test:adaptive": "node ./node_modules/typescript/bin/tsc src/services/adaptive/__tests__/integration.test.ts --ignoreConfig --outDir .tmp-test --module commonjs --target es2020 --moduleResolution node --skipLibCheck --ignoreDeprecations 6.0 && node .tmp-test/services/adaptive/__tests__/integration.test.js",
     "test:recipe": "node ./node_modules/typescript/bin/tsc src/games/recipe/model.test.ts --ignoreConfig --outDir .tmp-recipe-test --module commonjs --target es2022 --moduleResolution node --skipLibCheck --ignoreDeprecations 6.0 && node .tmp-recipe-test/model.test.js",
-    "test": "npm run typecheck && npm run test:adaptive && npm run test:recipe"
+    "test:speech": "node ./node_modules/typescript/bin/tsc src/services/voice-navigation/matcher.test.ts --ignoreConfig --outDir .tmp-speech-test --module commonjs --target es2022 --moduleResolution node --skipLibCheck --ignoreDeprecations 6.0 && node .tmp-speech-test/services/voice-navigation/matcher.test.js",
+    "test": "npm run typecheck && npm run test:adaptive && npm run test:recipe && npm run test:speech"
   },
   "dependencies": {
+    "@dr.pogodin/react-native-fs": "^2.40.3",
+    "@kesha-antonov/react-native-background-downloader": "^4.6.3",
     "@react-native-async-storage/async-storage": "^3.1.1",
     "@react-native-community/datetimepicker": "9.1.0",
     "@supabase/supabase-js": "^2.116.0",
@@ -28,6 +31,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-native": "0.86.3",
+    "react-native-sherpa-onnx": "^0.4.2",
     "react-native-svg": "15.15.4",
     "react-native-web": "^0.21.2"
   },

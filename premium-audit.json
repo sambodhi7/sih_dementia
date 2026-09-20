@@ -3,7 +3,7 @@
     {
       "category": "violation",
       "file": "src/games/recipe/RecipeGame.tsx",
-      "line": 143,
+      "line": 145,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -12,7 +12,7 @@
     {
       "category": "violation",
       "file": "src/games/recipe/RecipeGame.tsx",
-      "line": 143,
+      "line": 145,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -21,7 +21,7 @@
     {
       "category": "violation",
       "file": "src/games/recipe/RecipeGame.tsx",
-      "line": 149,
+      "line": 151,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.games",
+  "languageCode": "en",
+  "title": "Games",
+  "summary": "Choose one calm activity for today.",
+  "utterances": [
+    { "id": "games.intro", "groupId": "page", "kind": "description", "text": "Choose one calm activity for today." },
+    { "id": "games.whos-who.title", "groupId": "whos-who", "kind": "heading", "text": "Who's Who." },
+    { "id": "games.whos-who.description", "groupId": "whos-who", "kind": "description", "text": "Familiar faces and names, at your own pace." },
+    { "id": "games.recipe.title", "groupId": "recipe", "kind": "heading", "text": "Recipe." },
+    { "id": "games.recipe.description", "groupId": "recipe", "kind": "description", "text": "Follow a familiar recipe, one calm step at a time." },
+    { "id": "games.days-plan.title", "groupId": "days-plan", "kind": "heading", "text": "Day's Plan." },
+    { "id": "games.days-plan.description", "groupId": "days-plan", "kind": "description", "text": "Follow familiar moments from your daily plan." },
+    { "id": "games.skills.title", "groupId": "skills", "kind": "heading", "text": "Learn together." },
+    { "id": "games.skills.description", "groupId": "skills", "kind": "description", "text": "Practice a familiar hands-on activity together." }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.routine",
+  "languageCode": "as",
+  "title": "দিনৰ নিয়ম",
+  "summary": "আজিৰ পৰিকল্পনা আপোনাৰ যত্ন লোৱা ব্যক্তিয়ে প্ৰস্তুত কৰিছে। সুবিধা অনুভৱ কৰিলে এটাকৈ ধাপ লওক।",
+  "utterances": [
+    { "id": "routine.intro", "groupId": "page", "kind": "description", "text": "আজিৰ পৰিকল্পনা আপোনাৰ যত্ন লোৱা ব্যক্তিয়ে প্ৰস্তুত কৰিছে। সুবিধা অনুভৱ কৰিলে এটাকৈ ধাপ লওক।" }
+  ]
+}

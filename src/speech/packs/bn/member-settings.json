@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.settings",
+  "languageCode": "bn",
+  "title": "সেটিংস",
+  "summary": "স্বস্তি, ভাষা এবং ব্যবহারের সুবিধা।",
+  "utterances": [
+    { "id": "settings.intro", "groupId": "page", "kind": "description", "text": "স্বস্তি, ভাষা এবং ব্যবহারের সুবিধা।" },
+    { "id": "settings.access", "groupId": "access", "kind": "description", "text": "ফোনের লেখার আকার, স্ক্রিন রিডার এবং শব্দের সেটিংস ব্যবহার করুন। Saathi বড় স্পর্শ ক্ষেত্র এবং শান্ত কথ্য নির্দেশ রাখে।" }
+  ]
+}

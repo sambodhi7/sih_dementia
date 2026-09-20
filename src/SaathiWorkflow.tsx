@@ -1,13 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { RecipeGame } from './games/recipe/RecipeGame';
 import { getRecipeCopy } from './games/recipe/copy';
-import { ActivityIndicator, BackHandler, Image, Modal, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import type { GestureResponderEvent } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import type { ControllerState, GameEvent, SessionOutcome } from './services/adaptive/types';
 import { whosWhoChoiceIds, whosWhoOptionCount } from './services/adaptive/whosWhoPresentation';
 import { AudioCapture, AudioReplay } from './components/audio';
+import { ListenButton, PageListenCard } from './components/speech';
+import { VoiceGameLauncher } from './components/VoiceGameLauncher';
+import { LanguagePackDownload } from './components/LanguagePackDownload';
 import { CaregiverMetrics } from './components/CaregiverMetrics';
 import { DaysPlanActivity, DaysPlanEditor } from './components/daysPlan';
 import { ActionButton, Field, MemberRow, Notice, Portrait } from './components/ui';
@@ -31,6 +35,13 @@ import { completeSkillTransmissionSession, interruptSkillTransmissionSession, pe
 import { pickAndPersistSkillCompletionPhoto, persistSkillPromptAudio } from './storage/media';
 import { initializeSkillTransmission, listSkillCompletions, listSkillTransmissionItems, saveSkillPromptAudio, setSkillEnabled } from './storage/skillTransmission';
 import type { ActivitySession, SkillCompletion, SkillTransmissionItem } from './storage/types';
+import { getBundledSpeechPage, speechLanguageCodeFromAppId, speechTextFor } from './speech/packRegistry';
+import { formatPackMegabytes, speechPackForAppLanguage } from './speech/catalog';
+import { downloadLanguagePack, getLanguagePackStatus, languagePackDirectory } from './speech/packStorage';
+import { configureSpeechRuntime } from './speech/nativeRuntime';
+import { resolveOfflineVoiceNavigation } from './speech/recognition';
+import { voiceCommandsFor } from './speech/voiceCommands';
+import type { DownloadableSpeechPack, SpeechPackManifest, SpeechPackStatus } from './speech/types';
 
 type Screen = 'recipes' | 'language' | 'onboarding' | 'login' | 'dashboard' | 'manager' | 'editor' | 'daysPlanEditor' | 'daysPlan' | 'patient' | 'learning' | 'recall' | 'waiting' | 'skills-manager' | 'skills-home' | 'skill-invitation' | 'skill-active' | 'skill-complete' | 'metrics' | 'routineManager';
 type MemberTab = 'home' | 'routine' | 'settings';
@@ -43,11 +54,19 @@ const ExitPromptContext = createContext<ExitPromptControls>({ showExitPrompt: ()
 type DashboardScreen = 'dashboard' | 'patient';
 const copy = seed.app.copy;
 const recallModes: RecallMode[] = ['photo-to-name', 'name-to-photo', 'clue-to-photo'];
-// The dashboard switcher lives outside a screen's SafeAreaView, so it needs the
-// native status-bar inset explicitly. Keep the scroll reservation tied to the
-// same height so dashboard cards never begin underneath the fixed switcher.
-const dashboardStatusInset = StatusBar.currentHeight ?? 0;
+const gameCovers = {
+  whosWho: require('../assets/images/game-covers/whos-who-cover.png'),
+  recipe: require('../assets/images/game-covers/recipe-cover.png'),
+  daysPlan: require('../assets/images/game-covers/days-plan-cover.png'),
+  familySkills: require('../assets/images/game-covers/family-skills-cover.png'),
+};
+const appIcon = require('../assets/images/branding/saathi-app-icon.png');
 const emptyEditor = (): Editor => ({ name: '', relationship: '', personalNote: '', photoUri: null, nameAudioUri: null, noteAudioUri: null, learningOnly: false });
+const localInviteCode = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  return Math.abs(hash).toString(36).toUpperCase().padStart(6, '0').slice(-6);
+};
 const timeFromValue = (value: string) => { const [hour = 8, minute = 0] = value.split(':').map(Number); const date = new Date(); date.setHours(hour, minute, 0, 0); return date; };
 const timeValue = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
@@ -74,12 +93,24 @@ function LeafMark({ size = 34 }: { size?: number }) {
   </View>;
 }
 
+function AppMark({ size = 64 }: { size?: number }) {
+  return <Image accessibilityLabel="Saathi" source={appIcon} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+}
+
 function Header({ title, eyebrow }: { title: string; eyebrow?: string; onBack?: () => void; copy?: any }) {
   return <View style={styles.header}>{eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}<Text style={styles.title}>{title}</Text></View>;
 }
 
-function Layout({ children, patient = false, footer, dashboard = false }: { children: React.ReactNode; patient?: boolean; footer?: React.ReactNode; dashboard?: boolean; onBack?: () => void; backLabel?: string }) {
-  return <SafeAreaView style={styles.safe}><StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} /><ScrollView contentContainerStyle={[styles.scroll, styles.scrollCompact, dashboard && styles.dashboardScroll, patient && styles.patientScroll, footer ? styles.scrollWithFooter : null]} keyboardShouldPersistTaps="handled">{children}</ScrollView>{footer ? <View style={styles.fixedFooter}>{footer}</View> : null}</SafeAreaView>;
+function GameCover({ source, label }: { source: number; label: string }) {
+  return (
+    <View accessibilityRole="image" accessibilityLabel={label} style={styles.gameCoverFrame}>
+      <Image source={source} accessible={false} resizeMode="cover" style={styles.gameCover} />
+    </View>
+  );
+}
+
+function Layout({ children, patient = false, footer, dashboard = false, floating }: { children: React.ReactNode; patient?: boolean; footer?: React.ReactNode; dashboard?: boolean; floating?: ReactNode; onBack?: () => void; backLabel?: string }) {
+  return <SafeAreaView style={styles.safe}><StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} /><ScrollView contentContainerStyle={[styles.scroll, styles.scrollCompact, dashboard && styles.dashboardScroll, patient && styles.patientScroll, footer ? styles.scrollWithFooter : null]} keyboardShouldPersistTaps="handled">{children}</ScrollView>{floating ? <View style={styles.floatingVoice}>{floating}</View> : null}{footer ? <View style={styles.fixedFooter}>{footer}</View> : null}</SafeAreaView>;
 }
 
 function DashboardBottomNav({ active, onChange, tabs }: { active: string; onChange: (tab: string) => void; tabs: ReadonlyArray<readonly [string, string]> }) {
@@ -88,14 +119,32 @@ function DashboardBottomNav({ active, onChange, tabs }: { active: string; onChan
   </View>;
 }
 
-function MemberDashboard({ tab, setTab, routine, playableMemories, onOpenActivity, onOpenRecipes = () => undefined, onChangeLanguage, changeLanguageLabel, onSignOut, onOpenDaysPlan, onOpenSkills, skillsAvailable, notice, onTabChange }: { tab: MemberTab; setTab: (tab: MemberTab) => void; routine: RoutineItem[]; playableMemories: number; onOpenActivity: () => void; onOpenRecipes?: () => void; onChangeLanguage: () => void; changeLanguageLabel: string; onSignOut: () => void; onOpenDaysPlan: () => void; onOpenSkills: () => void; skillsAvailable: boolean; notice: string; onTabChange: (title: string) => void }) {
+function SpeechPackProgress({ pack, status, busy, problem, progress, copy }: { pack: DownloadableSpeechPack | null; status: SpeechPackStatus; busy: boolean; problem: boolean; progress: number; copy: any }) {
+  if (!pack || status === 'ready') return null;
+  return <LanguagePackDownload state={busy ? 'downloading' : problem ? 'error' : Platform.OS === 'web' ? 'unavailable' : status} progress={progress} size={formatPackMegabytes(pack.totalBytes)} copy={{ title: copy.speechPackTitle, description: copy.speechPackDescription, ready: copy.speechPackReady, system: copy.systemVoice, unavailable: copy.speechPackUnavailable, downloading: copy.downloadingPack, failed: copy.downloadFailed }} />;
+}
+
+function MemberDashboard({ tab, setTab, languageId, copy, routine, playableMemories, onOpenActivity, onOpenRecipes = () => undefined, onChangeLanguage, onSignOut, onOpenDaysPlan, onOpenSkills, skillsAvailable, notice, onTabChange, speechProgressCard, voiceLauncher }: { tab: MemberTab; setTab: (tab: MemberTab) => void; languageId: string; copy: any; routine: RoutineItem[]; playableMemories: number; onOpenActivity: () => void; onOpenRecipes?: () => void; onChangeLanguage: () => void; onSignOut: () => void; onOpenDaysPlan: () => void; onOpenSkills: () => void; skillsAvailable: boolean; notice: string; onTabChange: (title: string) => void; speechProgressCard?: ReactNode; voiceLauncher?: ReactNode }) {
   const upcoming = [...routine].sort((a, b) => a.time.localeCompare(b.time));
-  useEffect(() => { onTabChange(tab === 'home' ? 'Games' : tab === 'routine' ? 'Routine' : 'Settings'); }, [onTabChange, tab]);
-  return <Layout patient dashboard footer={<DashboardBottomNav active={tab} onChange={(nextTab) => setTab(nextTab as MemberTab)} tabs={[['home', 'Games'], ['routine', 'Routine'], ['settings', 'Settings']]} />}>
+  const speechLanguageCode = speechLanguageCodeFromAppId(languageId);
+  const speechPageId = tab === 'home' ? 'member.games' : tab === 'routine' ? 'member.routine' : 'member.settings';
+  const speechPage = speechLanguageCode ? getBundledSpeechPage(speechLanguageCode, speechPageId) : null;
+  useEffect(() => { onTabChange(tab === 'home' ? copy.gamesTab : tab === 'routine' ? copy.routineTab : copy.settingsTab); }, [copy.gamesTab, copy.routineTab, copy.settingsTab, onTabChange, tab]);
+  const listenCard = (groupId: string) => speechPage ? <ListenButton text={speechTextFor(speechPage, groupId)} languageCode={speechPage.languageCode} label={copy.listenCard} stopLabel={copy.stopListening} /> : null;
+  return <Layout patient dashboard floating={tab === 'home' ? voiceLauncher : undefined} footer={<DashboardBottomNav active={tab} onChange={(nextTab) => setTab(nextTab as MemberTab)} tabs={[['home', copy.gamesTab], ['routine', copy.routineTab], ['settings', copy.settingsTab]]} />}>
+    {speechProgressCard}
     {notice ? <Notice>{notice}</Notice> : null}
-    {tab === 'home' ? <><Text style={styles.body}>Choose one calm activity for today.</Text><View style={[styles.game, styles.gameCardReady]}><Text style={styles.overline}>MEMORY ACTIVITY</Text><Text style={styles.panelTitle}>Who's Who</Text><Text style={styles.body}>{playableMemories ? 'Familiar faces and names, at your own pace.' : 'A caregiver can add familiar memories when you are ready.'}</Text><ActionButton label="Open Who's Who" onPress={onOpenActivity} disabled={!playableMemories} /></View><View style={styles.game}><Text style={styles.overline}>FAMILIAR ACTIVITY</Text><Text style={styles.panelTitle}>Recipe</Text><Text style={styles.body}>Follow a familiar recipe, one calm step at a time.</Text><ActionButton label="Open recipe activity" onPress={onOpenRecipes} /></View><View style={styles.game}><Text style={styles.overline}>TODAY</Text><Text style={styles.panelTitle}>Day's Plan</Text><Text style={styles.body}>Follow familiar moments from your daily plan.</Text><ActionButton label="Open today's plan" onPress={onOpenDaysPlan} /></View>{skillsAvailable ? <View style={styles.game}><Text style={styles.overline}>FAMILY SKILLS</Text><Text style={styles.panelTitle}>Learn together</Text><Text style={styles.body}>Practice a familiar hands-on activity together.</Text><ActionButton label="Choose a skill" onPress={onOpenSkills} /></View> : null}<Text style={styles.patientSectionTitle}>Up next</Text>{upcoming.slice(0, 2).map((item) => <View key={item.id} style={styles.routineRow}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail}</Text></View></View>)}</> : null}
-    {tab === 'routine' ? <><Notice>Today's plan is prepared by your caregiver. Take each step when it feels right.</Notice><View style={styles.stack}>{upcoming.map((item) => <View key={item.id} style={[styles.routineRow, item.kind === 'medication' && styles.medicationRow]}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail}</Text>{item.kind === 'medication' ? <Text style={styles.medicationLabel}>Medication reminder</Text> : null}</View></View>)}</View></> : null}
-    {tab === 'settings' ? <><View style={styles.settingsPanel}><Text style={styles.panelTitle}>Comfort and access</Text><Text style={styles.body}>Use your phone's text size, screen reader, and sound settings. Saathi keeps large touch targets and calm, spoken prompts.</Text><ActionButton label={changeLanguageLabel} onPress={onChangeLanguage} variant="secondary" /><ActionButton label="Sign out" onPress={onSignOut} variant="danger" /></View></> : null}
+    {speechPage ? <PageListenCard title={copy.listenPage} description={copy.listenDescription} listenLabel={copy.listen} stopLabel={copy.stopListening} text={speechTextFor(speechPage)} languageCode={speechPage.languageCode} /> : null}
+    {tab === 'home' ? <>
+      <Text style={styles.body}>{copy.chooseActivityToday}</Text>
+      <View style={[styles.game, styles.gameCardReady]}><GameCover source={gameCovers.whosWho} label={copy.whosDescription} /><Text style={styles.overline}>{copy.memoryActivity}</Text><Text style={styles.panelTitle}>Who's Who</Text><Text style={styles.body}>{playableMemories ? copy.whosDescription : copy.caregiverAddDescription}</Text>{listenCard('whos-who')}<ActionButton label={copy.openWhosWho} onPress={onOpenActivity} disabled={!playableMemories} /></View>
+      <View style={styles.game}><GameCover source={gameCovers.recipe} label={copy.recipeDescription} /><Text style={styles.overline}>{copy.familiarActivity}</Text><Text style={styles.panelTitle}>Recipe</Text><Text style={styles.body}>{copy.recipeDescription}</Text>{listenCard('recipe')}<ActionButton label={copy.openRecipe} onPress={onOpenRecipes} /></View>
+      <View style={styles.game}><GameCover source={gameCovers.daysPlan} label={copy.daysPlanDescription} /><Text style={styles.overline}>{copy.todayLabel}</Text><Text style={styles.panelTitle}>Day's Plan</Text><Text style={styles.body}>{copy.daysPlanDescription}</Text>{listenCard('days-plan')}<ActionButton label={copy.openDaysPlan} onPress={onOpenDaysPlan} /></View>
+      {skillsAvailable ? <View style={styles.game}><GameCover source={gameCovers.familySkills} label={copy.skillsDescription} /><Text style={styles.overline}>{copy.familySkillsLabel}</Text><Text style={styles.panelTitle}>Learn Together</Text><Text style={styles.body}>{copy.skillsDescription}</Text>{listenCard('skills')}<ActionButton label={copy.chooseSkill} onPress={onOpenSkills} /></View> : null}
+      <Text style={styles.patientSectionTitle}>{copy.upNext}</Text>{upcoming.slice(0, 2).map((item) => <View key={item.id} style={styles.routineRow}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail}</Text></View></View>)}
+    </> : null}
+    {tab === 'routine' ? <><Notice>{copy.routineIntro}</Notice><View style={styles.stack}>{upcoming.map((item) => <View key={item.id} style={[styles.routineRow, item.kind === 'medication' && styles.medicationRow]}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail}</Text>{item.kind === 'medication' ? <Text style={styles.medicationLabel}>{copy.medicationReminder}</Text> : null}</View></View>)}</View></> : null}
+    {tab === 'settings' ? <><View style={styles.memberSettingsPanel}><Text style={styles.panelTitle}>{copy.comfortAccess}</Text><Text style={styles.body}>{copy.comfortDescription}</Text><ActionButton label={copy.changeLanguage} onPress={onChangeLanguage} variant="secondary" /></View><View style={styles.memberSettingsPanel}><Text style={styles.settingsLabel}>{copy.aboutSaathi}</Text><Text style={styles.settingsValue}>{copy.privateLocal}</Text><Text style={styles.body}>{copy.privacyDescription}</Text></View><View style={styles.signOutAction}><ActionButton label={copy.signOut} onPress={onSignOut} variant="danger" /></View></> : null}
   </Layout>;
 }
 
@@ -115,11 +164,11 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const [languageId, setLanguageId] = useState(seed.languagePacks[0].id);
   const [items, setItems] = useState<WhosWhoItem[]>([]);
   const [patientId, setPatientId] = useState(seed.patient.id);
-  const inviteCode = patientId.replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase().padStart(6, '0');
   const [setup, setSetup] = useState<CareProfile>({ guardianName: seed.guardian.name, relationship: seed.guardian.relationship, patientName: seed.patient.name });
+  const inviteCode = setup.patientName.trim() ? localInviteCode(patientId) : '—';
   const [login, setLogin] = useState({ email: 'demo@saathi.local', password: 'saathi-demo' });
   const [authMode, setAuthMode] = useState<'signIn' | 'signUp'>('signIn');
-  const [loginRole, setLoginRole] = useState<'caretaker' | 'patient'>('caretaker');
+  const [loginRole, setLoginRole] = useState<'caretaker' | 'patient'>('patient');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [editor, setEditor] = useState<Editor>(emptyEditor());
@@ -152,6 +201,10 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const [routine, setRoutine] = useState<RoutineItem[]>([]);
   const [routineDraft, setRoutineDraft] = useState({ title: '', detail: '', time: '08:00', kind: 'medication' as RoutineItem['kind'] });
   const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [speechPackStatus, setSpeechPackStatus] = useState<SpeechPackStatus>('not-installed');
+  const [speechPackProgress, setSpeechPackProgress] = useState(0);
+  const [speechPackBusy, setSpeechPackBusy] = useState(false);
+  const [speechPackProblem, setSpeechPackProblem] = useState(false);
 
   useEffect(() => {
     if (!roleTarget) return;
@@ -173,6 +226,16 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   // localized strings while falling back to the current game copy for any
   // activity labels they do not yet translate.
   const copy = useMemo<any>(() => ({ ...seed.app.copy, ...(translations[languageId] ?? translations.english) }), [languageId]);
+  const selectedSpeechPack = useMemo(() => speechPackForAppLanguage(languageId), [languageId]);
+  useEffect(() => {
+    let active = true;
+    setSpeechPackProblem(false);
+    setSpeechPackProgress(0);
+    if (!selectedSpeechPack) { setSpeechPackStatus('not-installed'); return () => { active = false; }; }
+    void getLanguagePackStatus(selectedSpeechPack).then((status) => { if (active) setSpeechPackStatus(status); });
+    return () => { active = false; };
+  }, [selectedSpeechPack]);
+  useEffect(() => { void configureSpeechRuntime(languageId); }, [languageId]);
   const patientDisplayName = setup.patientName.trim();
   const activeItem = useMemo(() => items.find((item) => item.id === activeItemId) ?? null, [items, activeItemId]);
   const activeSkill = useMemo(() => skills.find((item) => item.id === activeSkillId) ?? null, [activeSkillId, skills]);
@@ -196,7 +259,10 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   useEffect(() => { void (async () => {
     await initializeItems();
     const storedLanguageId = await getLocalSetting('language-id');
-    if (seed.languagePacks.some((pack) => pack.id === storedLanguageId)) { setLanguageId(storedLanguageId!); setScreen('login'); }
+    if (seed.languagePacks.some((pack) => pack.id === storedLanguageId)) {
+      setLanguageId(storedLanguageId!);
+      setScreen('login');
+    }
     const stored = await getLocalSetting('patient-id'); const localPatientId = stored ?? patientId; if (stored) setPatientId(stored);
     const storedProfile = await getLocalSetting('care-profile');
     if (storedProfile) { try { setSetup(JSON.parse(storedProfile) as CareProfile); } catch { /* Ignore malformed local profile data. */ } }
@@ -212,7 +278,51 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   };
 
   const persistCareProfile = async (profile = setup) => setLocalSetting('care-profile', JSON.stringify(profile));
-  const saveLanguage = async () => { await setLocalSetting('language-id', languageId); setScreen(languageReturnScreen); };
+  const saveLanguage = async () => { await setLocalSetting('language-id', languageId); await configureSpeechRuntime(languageId); setScreen(languageReturnScreen); };
+  const startSpeechPackDownload = async (pack: DownloadableSpeechPack) => {
+    if (speechPackBusy || Platform.OS === 'web') return;
+    setSpeechPackBusy(true);
+    setSpeechPackProblem(false);
+    try {
+      await downloadLanguagePack(pack, ({ fraction }) => setSpeechPackProgress(fraction));
+      setSpeechPackStatus('ready');
+      await configureSpeechRuntime(pack.appLanguageId);
+    } catch {
+      setSpeechPackProblem(true);
+    } finally {
+      setSpeechPackBusy(false);
+    }
+  };
+  const prepareSelectedLanguage = async () => {
+    const packToDownload = selectedSpeechPack;
+    await saveLanguage();
+    if (packToDownload && speechPackStatus !== 'ready') void startSpeechPackDownload(packToDownload);
+  };
+  const openVoiceSelectedGame = async (audioUri: string): Promise<string> => {
+    const pack = selectedSpeechPack;
+    const languageCode = speechLanguageCodeFromAppId(languageId);
+    const directory = pack ? languagePackDirectory(pack.languageCode) : null;
+    if (!pack || !languageCode || !directory || speechPackStatus !== 'ready') return copy.voiceProblem;
+    const manifest: SpeechPackManifest = {
+      schemaVersion: 1,
+      id: `saathi-${languageCode}-voice-v1`,
+      languageCode,
+      displayName: pack.displayName,
+      models: {
+        tts: { engine: 'sherpa-onnx-vits', model: 'models/tts/model.onnx', tokens: 'models/tts/tokens.txt' },
+        stt: { engine: 'sherpa-onnx-ctc', model: 'models/stt/model.int8.onnx', tokens: 'models/stt/tokens.txt' },
+      },
+      pages: ['member.games', 'member.routine', 'member.settings'],
+      commands: voiceCommandsFor(languageCode),
+    };
+    const nativeSttDirectory = `${decodeURIComponent(directory.replace(/^file:\/\//, ''))}models/stt`;
+    const result = await resolveOfflineVoiceNavigation(audioUri, nativeSttDirectory, manifest);
+    if (result.intent === 'start_whos_who') { void openActivity(); return `${copy.voiceOpening} Who's Who`; }
+    if (result.intent === 'start_recipe') { setScreen('recipes'); return `${copy.voiceOpening} Recipe`; }
+    if (result.intent === 'start_days_plan') { setScreen('daysPlan'); return `${copy.voiceOpening} Day's Plan`; }
+    if (result.intent === 'start_skills') { setScreen('skills-home'); return `${copy.voiceOpening} Learn Together`; }
+    return copy.voiceProblem;
+  };
   const openLanguageSettings = (returnScreen: Screen) => { setLanguageReturnScreen(returnScreen); setNotice(''); setScreen('language'); };
 
   const createCareCircle = async () => {
@@ -382,9 +492,10 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     const listener = BackHandler.addEventListener('hardwareBackPress', goBack);
     return () => listener.remove();
   }, [goBack]);
+  const handleMemberTabChange = useCallback((title: string) => onDashboardChange('patient', title), [onDashboardChange]);
   const currentHint = activeItem ? hintMessage(activeItem, hintLevel) : null;
-  if (!ready) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>Preparing your local memory library…</Text></View></SafeAreaView>;
-  if (screen === 'metrics') return <Layout><Header copy={copy} title="Practice insights" eyebrow={copy.dashboardTitle} onBack={goBack} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
+  if (!ready) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>{copy.preparingLibrary}</Text></View></SafeAreaView>;
+  if (screen === 'metrics') return <Layout><Header copy={copy} title={copy.practiceInsights} eyebrow={copy.dashboardTitle} onBack={goBack} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
   if (screen === 'language') return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} />
@@ -392,16 +503,19 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
       <Image source={require('../assets/images/ne_pattern_bottom.png')} style={styles.bgBottom} />
       <ScrollView contentContainerStyle={[styles.scroll, { zIndex: 1 }]} keyboardShouldPersistTaps="handled">
         <View style={styles.languageHeader}>
-          <LeafMark size={64} />
+          <AppMark />
           <Text style={styles.appName}>Saathi</Text>
-          <Text style={styles.languageTitle}>LANGUAGE</Text>
+          <Text style={styles.languageTitle}>{copy.languageHeading}</Text>
         </View>
         <View style={styles.stack}>
           {seed.languagePacks.map((pack) => (
             <Pressable
               key={pack.id}
               accessibilityRole="button"
-              onPress={() => setLanguageId(pack.id)}
+              hitSlop={4}
+              onPress={() => { if (!speechPackBusy) setLanguageId(pack.id); }}
+              disabled={speechPackBusy}
+              accessibilityState={{ selected: languageId === pack.id, disabled: speechPackBusy }}
               style={({ pressed }) => [
                 styles.languageOption,
                 languageId === pack.id && styles.languageOptionSelected,
@@ -414,31 +528,41 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
             </Pressable>
           ))}
         </View>
+        <LanguagePackDownload
+          state={speechPackBusy ? 'downloading' : speechPackProblem ? 'error' : selectedSpeechPack ? Platform.OS === 'web' ? 'unavailable' : speechPackStatus : 'system'}
+          progress={speechPackProgress}
+          size={selectedSpeechPack ? formatPackMegabytes(selectedSpeechPack.totalBytes) : undefined}
+          copy={{ title: copy.speechPackTitle, description: copy.speechPackDescription, ready: copy.speechPackReady, system: copy.systemVoice, unavailable: copy.speechPackUnavailable, downloading: copy.downloadingPack, failed: copy.downloadFailed }}
+        />
         <View style={[styles.stack, { marginTop: 24 }]}>
-          <ActionButton label={copy.continue} onPress={() => { setAuthMode('signIn'); setNotice(''); void saveLanguage(); }} />
+          <ActionButton
+            label={copy.continue}
+            onPress={() => { setAuthMode('signIn'); setNotice(''); void prepareSelectedLanguage(); }}
+            disabled={false}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
   );
-  if (screen === 'onboarding') return <Layout backLabel="Back" onBack={goBack}><Header copy={copy} title={copy.guardianSetup} onBack={goBack} /><Text style={styles.body}>Set up the care circle. Family media stays on this device.</Text><View style={styles.stack}><Field label={copy.guardianName} value={setup.guardianName} onChangeText={(guardianName) => setSetup({ ...setup, guardianName })} /><Field label={copy.relationship} value={setup.relationship} onChangeText={(relationship) => setSetup({ ...setup, relationship })} /><Field label={copy.patientName} value={setup.patientName} onChangeText={(patientName) => setSetup({ ...setup, patientName })} /></View>{notice ? <Notice tone="support">{notice}</Notice> : null}<ActionButton label={busy ? 'Setting up…' : copy.continue} onPress={async () => { const { data } = await supabase?.auth.getUser() ?? { data: null }; if (!data?.user) { setAuthMode('signUp'); setScreen('login'); } else if (await createCareCircle()) setScreen('dashboard'); }} disabled={busy} /></Layout>;
+  if (screen === 'onboarding') return <Layout backLabel={copy.back} onBack={goBack}><Header copy={copy} title={copy.guardianSetup} onBack={goBack} /><Text style={styles.body}>{copy.setupCareCircleHint}</Text><View style={styles.stack}><Field label={copy.guardianName} value={setup.guardianName} onChangeText={(guardianName) => setSetup({ ...setup, guardianName })} /><Field label={copy.relationship} value={setup.relationship} onChangeText={(relationship) => setSetup({ ...setup, relationship })} /><Field label={copy.patientName} value={setup.patientName} onChangeText={(patientName) => setSetup({ ...setup, patientName })} /></View>{notice ? <Notice tone="support">{notice}</Notice> : null}<ActionButton label={busy ? copy.settingUp : copy.continue} onPress={async () => { const { data } = await supabase?.auth.getUser() ?? { data: null }; if (!data?.user) { setAuthMode('signUp'); setScreen('login'); } else if (await createCareCircle()) setScreen('dashboard'); }} disabled={busy} /></Layout>;
   if (screen === 'login') return (
     <Layout backLabel="Back" onBack={goBack}>
       <View style={styles.loginBrand}>
-        <LeafMark size={64} />
+        <AppMark />
         <Text style={styles.appName}>Saathi</Text>
       </View>
       <Header copy={copy} title={authMode === 'signIn' ? copy.signInTitle : copy.createAccountTitle} onBack={goBack} />
       <View style={styles.toggleContainer}>
-        <Pressable onPress={() => setLoginRole('caretaker')} style={[styles.toggleOption, loginRole === 'caretaker' && styles.toggleOptionActive]} accessibilityRole="button">
-          <Text style={[styles.toggleText, loginRole === 'caretaker' && styles.toggleTextActive]}>Caretaker</Text>
-        </Pressable>
         <Pressable onPress={() => setLoginRole('patient')} style={[styles.toggleOption, loginRole === 'patient' && styles.toggleOptionActive]} accessibilityRole="button">
-          <Text style={[styles.toggleText, loginRole === 'patient' && styles.toggleTextActive]}>Member</Text>
+          <Text style={[styles.toggleText, loginRole === 'patient' && styles.toggleTextActive]}>{copy.memberRole}</Text>
+        </Pressable>
+        <Pressable onPress={() => setLoginRole('caretaker')} style={[styles.toggleOption, loginRole === 'caretaker' && styles.toggleOptionActive]} accessibilityRole="button">
+          <Text style={[styles.toggleText, loginRole === 'caretaker' && styles.toggleTextActive]}>{copy.caregiverRole}</Text>
         </Pressable>
       </View>
       <View style={styles.stack}>
         <Field label={copy.email} value={login.email} onChangeText={(email) => setLogin({ ...login, email })} placeholder="name@example.com" />
-        <Field label={copy.password} value={login.password} onChangeText={(password) => setLogin({ ...login, password })} secureTextEntry placeholder="At least 8 characters" />
+        <Field label={copy.password} value={login.password} onChangeText={(password) => setLogin({ ...login, password })} secureTextEntry placeholder={copy.passwordHint} />
       </View>
       {notice ? <Notice tone="support">{notice}</Notice> : null}
       <ActionButton
@@ -450,9 +574,19 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     </Layout>
   );
   if (screen === 'routineManager') return <Layout><Header copy={copy} title="Daily routine and reminders" eyebrow="Caregiver Area" onBack={goBack} /><Text style={styles.body}>Medication reminders are saved and scheduled on this device. Check each medicine name and dose with the prescription before saving.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.stack}>{routine.map((item) => <View key={item.id} style={[styles.routineRow, item.kind === 'medication' && styles.medicationRow]}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail || 'No extra note.'}</Text><Text style={styles.medicationLabel}>{item.kind === 'medication' ? 'Medication alarm' : 'Routine reminder'}</Text></View><ActionButton label="Remove" onPress={async () => { setRoutine(await removeRoutineItem(routine, item.id)); }} variant="quiet" compact /></View>)}</View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>Add a reminder</Text><Field label="Reminder name" value={routineDraft.title} onChangeText={(title) => setRoutineDraft((value) => ({ ...value, title }))} placeholder="For example, morning medicine" /><Field label="Instructions" value={routineDraft.detail} onChangeText={(detail) => setRoutineDraft((value) => ({ ...value, detail }))} placeholder="For example, take after breakfast" multiline /><Text style={styles.fieldLabel}>Reminder time</Text><ActionButton label={`Choose time: ${routineDraft.time}`} onPress={() => setTimePickerVisible(true)} variant="secondary" />{timePickerVisible ? <DateTimePicker value={timeFromValue(routineDraft.time)} mode="time" display="default" onChange={(_event, selectedTime) => { setTimePickerVisible(false); if (selectedTime) setRoutineDraft((value) => ({ ...value, time: timeValue(selectedTime) })); }} /> : null}<ActionButton label={routineDraft.kind === 'medication' ? 'Type: medication' : 'Type: routine'} onPress={() => setRoutineDraft((value) => ({ ...value, kind: value.kind === 'medication' ? 'activity' : 'medication' }))} variant="secondary" /><ActionButton label="Save local reminder" onPress={() => { void addRoutineItem(); }} /></View></Layout>;
-  if (screen === 'dashboard') return <Layout dashboard footer={<DashboardBottomNav active={caregiverTab} onChange={(nextTab) => setCaregiverTab(nextTab as CaregiverTab)} tabs={[['games', 'Games'], ['insights', 'Insights'], ['settings', 'Settings']]} />}>{caregiverTab === 'games' ? <><Notice>Photos, voice notes, learning history, and review schedules are stored locally first.</Notice><View style={styles.panel}><Text style={styles.overline}>MEMORY LIBRARY</Text><Text style={styles.panelTitle}>{copy.whosWhoTitle}</Text><Text style={styles.body}>{`${items.length} active familiar memories are ready for gentle practice.`}</Text><ActionButton label={copy.manageWhosWho} onPress={() => setScreen('manager')} /></View><View style={styles.panel}><Text style={styles.overline}>TODAY</Text><Text style={styles.panelTitle}>Day’s Plan</Text><Text style={styles.body}>Prepare familiar moments for the patient’s morning and evening.</Text><ActionButton label="Prepare today’s plan" onPress={() => setScreen('daysPlanEditor')} variant="secondary" /></View><View style={styles.panel}><Text style={styles.overline}>FAMILY SKILLS</Text><Text style={styles.panelTitle}>{copy.skillTransmissionTitle}</Text><Text style={styles.body}>{`${skills.filter((item) => item.enabled && isPlayableSkill(item.catalogKey)).length} ${copy.skillReadyCount}`}</Text><ActionButton label={copy.manageSkills} onPress={() => { setNotice(''); setScreen('skills-manager'); }} /></View></> : null}{caregiverTab === 'insights' ? <><Notice>These are non-diagnostic support and change-from-baseline summaries.</Notice><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></> : null}{caregiverTab === 'settings' ? <><View style={styles.settingsPanel}><Text style={styles.panelTitle}>Assigned member</Text><Text style={styles.body}>This caregiver area is set up for:</Text><Text style={styles.settingsValue}>{setup.patientName || 'No member assigned'}</Text></View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>Invite ID</Text><Text style={styles.body}>This care-circle identifier is shown here for your records.</Text><Text selectable style={styles.inviteId}>{inviteCode}</Text></View><ActionButton label={copy.changeLanguage} onPress={() => openLanguageSettings('dashboard')} variant="secondary" /><ActionButton label="Daily routine and medication reminders" onPress={() => { setNotice(''); setScreen('routineManager'); }} variant="secondary" /><ActionButton label={copy.signOut} onPress={() => { setNotice(''); setScreen('login'); }} variant="danger" /></> : null}</Layout>;
-  if (screen === 'daysPlanEditor') return <Layout><Header title="Prepare today’s plan" eyebrow={copy.dashboardTitle} onBack={goBack} /><DaysPlanEditor items={daysPlanItems} onSave={saveDaysPlan} onCancel={() => setScreen('dashboard')} /></Layout>;
-  if (screen === 'daysPlan') return <Layout patient><Header title="Today’s plan" eyebrow="Saathi" onBack={goBack} /><DaysPlanActivity items={daysPlanItems} patientName={patientDisplayName} controllerState={daysPlanController} onExit={() => setScreen('patient')} onPhaseStart={beginDaysPlan} onEvent={recordDaysPlanEvent} onComplete={finishDaysPlan} onAbandon={abandonDaysPlan} /></Layout>;
+  if (screen === 'dashboard') return <Layout dashboard footer={<DashboardBottomNav active={caregiverTab} onChange={(nextTab) => setCaregiverTab(nextTab as CaregiverTab)} tabs={[['games', copy.gamesTab], ['insights', copy.practiceInsights], ['settings', copy.settingsTab]]} />}>
+    <SpeechPackProgress pack={selectedSpeechPack} status={speechPackStatus} busy={speechPackBusy} problem={speechPackProblem} progress={speechPackProgress} copy={copy} />
+    {caregiverTab === 'games' ? <>
+      <View style={styles.caregiverIntro}><Text style={styles.overline}>{copy.careDashboard}</Text><Text style={styles.panelTitle}>{copy.prepareActivities}</Text><Text style={styles.body}>{copy.prepareActivitiesHint}</Text></View>
+      <View style={styles.caregiverGameRow}><View style={styles.caregiverGameCopy}><Text style={styles.overline}>{copy.memoryLibrary}</Text><Text style={styles.caregiverGameTitle}>{copy.whosWhoTitle}</Text><Text style={styles.body}>{items.length ? `${items.length} ${copy.memoriesReady}` : copy.noMemories}</Text></View><ActionButton label={copy.manageWhosWho} onPress={() => setScreen('manager')} variant="secondary" /></View>
+      <View style={styles.caregiverGameRow}><View style={styles.caregiverGameCopy}><Text style={styles.overline}>{copy.dailyRoutineLabel}</Text><Text style={styles.caregiverGameTitle}>Day’s Plan</Text><Text style={styles.body}>{copy.prepareMoments}</Text></View><ActionButton label={copy.prepareTodayPlan} onPress={() => setScreen('daysPlanEditor')} variant="secondary" /></View>
+      <View style={styles.caregiverGameRow}><View style={styles.caregiverGameCopy}><Text style={styles.overline}>{copy.familySkillsLabel}</Text><Text style={styles.caregiverGameTitle}>{copy.skillTransmissionTitle}</Text><Text style={styles.body}>{skills.filter((item) => item.enabled && isPlayableSkill(item.catalogKey)).length ? `${skills.filter((item) => item.enabled && isPlayableSkill(item.catalogKey)).length} ${copy.activitiesReady}` : copy.noActivities}</Text></View><ActionButton label={copy.manageSkills} onPress={() => { setNotice(''); setScreen('skills-manager'); }} variant="secondary" /></View>
+    </> : null}
+    {caregiverTab === 'insights' ? <><Notice>{copy.insightsNotice}</Notice><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></> : null}
+    {caregiverTab === 'settings' ? <><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.assignedMember}</Text><Text style={styles.body}>{copy.assignedFor}</Text><Text style={styles.settingsValue}>{setup.patientName || copy.noMemberAssigned}</Text></View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.inviteId}</Text><Text style={styles.body}>{inviteCode === '—' ? copy.invitePending : copy.inviteInfo}</Text><Text selectable style={[styles.inviteId, inviteCode === '—' && styles.inviteIdUnavailable]}>{inviteCode}</Text></View><ActionButton label={copy.changeLanguage} onPress={() => openLanguageSettings('dashboard')} variant="secondary" /><ActionButton label={copy.dailyRoutineSettings} onPress={() => { setNotice(''); setScreen('routineManager'); }} variant="secondary" /><ActionButton label={copy.signOut} onPress={() => { setNotice(''); setScreen('login'); }} variant="danger" /></> : null}
+  </Layout>;
+  if (screen === 'daysPlanEditor') return <Layout><Header title="Prepare today’s plan" eyebrow={copy.dashboardTitle} onBack={goBack} /><DaysPlanEditor items={daysPlanItems} onSave={saveDaysPlan} onCancel={() => setScreen('dashboard')} languageId={languageId} /></Layout>;
+  if (screen === 'daysPlan') return <Layout patient><Header title="Today’s plan" eyebrow="Saathi" onBack={goBack} /><DaysPlanActivity items={daysPlanItems} patientName={patientDisplayName} controllerState={daysPlanController} onExit={() => setScreen('patient')} onPhaseStart={beginDaysPlan} onEvent={recordDaysPlanEvent} onComplete={finishDaysPlan} onAbandon={abandonDaysPlan} languageId={languageId} /></Layout>;
   if (screen === 'skills-manager') return <Layout><Header title={copy.skillTransmissionTitle} eyebrow={copy.dashboardTitle} onBack={goBack} /><Text style={styles.body}>{copy.skillsManagerHint}</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.stack}>{skills.map((item) => <SkillManagerCard key={item.id} item={item} title={skillTitle(item)} prompt={skillPrompt(item)} available={isPlayableSkill(item.catalogKey)} labels={{ voicePrompt: copy.voicePrompt, enable: copy.enableSkill, disable: copy.disableSkill, recordToEnable: copy.recordToEnable, hearAgain: copy.hearAgain, interactionComingSoon: copy.interactionComingSoon, audio: audioCaptureLabels }} onAudioCaptured={(uri) => captureSkillPrompt(item, uri)} onToggle={() => toggleSkill(item)} onProblem={setNotice} />)}</View><View style={styles.sharedMoments}><Text style={styles.overline}>{copy.sharedMoments}</Text>{skillCompletions.some((entry) => entry.photoUri) ? <View style={styles.momentGrid}>{skillCompletions.filter((entry) => entry.photoUri).map((entry) => { const item = skills.find((skill) => skill.id === entry.itemId); return <View key={entry.id} style={styles.momentCard}><Image source={{ uri: entry.photoUri ?? undefined }} accessibilityLabel={item ? skillTitle(item) : copy.sharedMoments} style={styles.momentPhoto} /><Text style={styles.momentTitle}>{item ? skillTitle(item) : copy.sharedMoments}</Text><Text style={styles.momentDate}>{`${copy.sharedOn} ${new Date(entry.completedAt).toLocaleDateString()}`}</Text></View>; })}</View> : <Text style={styles.body}>{copy.noSharedMoments}</Text>}</View><ActionButton label={copy.dashboardTitle} onPress={() => setScreen('dashboard')} variant="quiet" /></Layout>;
   if (screen === 'skills-home') return <Layout patient><Header title={copy.chooseSkill} eyebrow={copy.skillTransmissionTitle} onBack={goBack} /><View style={styles.stack}>{skills.filter((item) => item.enabled && item.promptAudioUri && isPlayableSkill(item.catalogKey)).map((item) => <PatientSkillCard key={item.id} item={item} title={skillTitle(item)} prompt={skillPrompt(item)} onPress={() => { void openSkill(item); }} />)}</View><View style={styles.sharedMoments}><Text style={styles.overline}>{copy.sharedMoments}</Text>{skillCompletions.some((entry) => entry.photoUri) ? <View style={styles.momentGrid}>{skillCompletions.filter((entry) => entry.photoUri).map((entry) => { const item = skills.find((skill) => skill.id === entry.itemId); return <View key={entry.id} style={styles.momentCard}><Image source={{ uri: entry.photoUri ?? undefined }} accessibilityLabel={item ? skillTitle(item) : copy.sharedMoments} style={styles.momentPhoto} /><Text style={styles.momentTitle}>{item ? skillTitle(item) : copy.sharedMoments}</Text><Text style={styles.momentDate}>{`${copy.sharedOn} ${new Date(entry.completedAt).toLocaleDateString()}`}</Text></View>; })}</View> : <Text style={styles.body}>{copy.noSharedMoments}</Text>}</View><ActionButton label={copy.home} onPress={() => setScreen('patient')} variant="quiet" /></Layout>;
   if (screen === 'skill-invitation' && activeSkill) return <Layout patient><Header copy={copy} title={copy.skillInvitation} eyebrow={copy.skillTransmissionTitle} onBack={goBack} /><View style={styles.skillFrame}><SkillIllustration skill={activeSkill.catalogKey} label={skillTitle(activeSkill)} size={250} /><Text style={styles.frameName}>{skillTitle(activeSkill)}</Text><Text style={styles.note}>{skillPrompt(activeSkill)}</Text></View><AudioReplay uri={activeSkill.promptAudioUri} label={copy.hearAgain} onReplay={replaySkillPrompt} /><ActionButton label={copy.letsBegin} onPress={() => { void beginSkillActivity(); }} /><ActionButton label={copy.home} onPress={() => { void leaveSkillSession(); }} variant="quiet" /></Layout>;
@@ -466,9 +600,8 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const playableMemories = items.filter((item) => !item.learningOnly).length;
   const enabledSkills = skills.filter((item) => item.enabled && item.promptAudioUri && isPlayableSkill(item.catalogKey));
   if (screen === 'recipes') return <RecipeGame patientId={patientId} language={languageId} onHome={() => setScreen('patient')} />;
-  if (screen === 'patient') return <MemberDashboard tab={memberTab} setTab={setMemberTab} routine={routine} playableMemories={playableMemories} onOpenActivity={() => { void openActivity(); }} onOpenRecipes={() => setScreen('recipes')} onChangeLanguage={() => openLanguageSettings('patient')} changeLanguageLabel={copy.changeLanguage} onSignOut={() => { setNotice(''); setScreen('login'); }} onOpenDaysPlan={() => setScreen('daysPlan')} onOpenSkills={() => setScreen('skills-home')} skillsAvailable={enabledSkills.length > 0} notice={notice} onTabChange={(title) => onDashboardChange('patient', title)} />;
-  return <Layout patient><View style={styles.patientHead}><View><Text style={styles.greeting}>{copy.patientGreeting}{patientDisplayName ? ',' : ''}</Text>{patientDisplayName ? <Text style={styles.patientName}>{patientDisplayName}</Text> : null}</View><View style={styles.people}><Portrait name={patientDisplayName || 'Patient'} size={68} /><Portrait name={setup.guardianName || 'Caregiver'} size={68} /></View></View><Text style={styles.section}>Choose an activity</Text><View style={styles.stack}><View style={styles.game}><Text style={styles.panelTitle}>{getRecipeCopy(languageId).title}</Text><Text style={styles.body}>{getRecipeCopy(languageId).invitation}</Text><ActionButton label={copy.continue} onPress={() => setScreen('recipes')} /></View><View style={styles.game}><Text style={styles.overline}>{copy.ready}</Text><Text style={styles.panelTitle}>Day’s Plan</Text><Text style={styles.body}>A calm look at the familiar moments in your day.</Text><ActionButton label="Open today’s plan" onPress={() => setScreen('daysPlan')} /></View><View style={styles.game}><Text style={styles.overline}>{copy.ready}</Text><Text style={styles.panelTitle}>{copy.whosWhoTitle}</Text><Text style={styles.body}>{playableMemories >= 2 ? copy.familiarMemoriesReady : playableMemories === 1 ? copy.oneMemoryReady : copy.caregiverAddMemory}</Text><ActionButton label={copy.continue} onPress={openActivity} disabled={playableMemories < 1} /></View>{enabledSkills.length ? <View style={styles.game}><Text style={styles.overline}>{copy.ready}</Text><Text style={styles.panelTitle}>{copy.skillTransmissionTitle}</Text><Text style={styles.body}>{enabledSkills.length === 1 ? copy.skillReadyOne : `${enabledSkills.length} ${copy.skillReadyCount}`}</Text><ActionButton label={copy.continue} onPress={() => setScreen('skills-home')} /></View> : null}</View>{notice ? <Notice>{notice}</Notice> : null}<ActionButton label={copy.caregiverArea} onPress={() => { setAuthMode('signIn'); setNotice(''); setScreen('login'); }} variant="quiet" /></Layout>;
-  return <Layout patient backLabel={copy.back} onBack={goBack}><View style={styles.patientHead}><View /><View style={styles.people}><Portrait name={patientDisplayName || 'Member'} size={68} /><Portrait name={setup.guardianName || 'Caregiver'} size={68} /></View></View><Text style={styles.section}>Choose an activity</Text><View style={styles.stack}><View style={styles.game}><Text style={styles.overline}>{copy.ready}</Text><Text style={styles.panelTitle}>{copy.whosWhoTitle}</Text><Text style={styles.body}>{playableMemories >= 2 ? copy.familiarMemoriesReady : playableMemories === 1 ? copy.oneMemoryReady : copy.caregiverAddMemory}</Text><ActionButton label={copy.continue} onPress={openActivity} disabled={playableMemories < 1} /></View></View>{notice ? <Notice>{notice}</Notice> : null}<ActionButton label={copy.caregiverArea} onPress={() => { setAuthMode('signIn'); setNotice(''); setScreen('login'); }} variant="quiet" /></Layout>;
+  if (screen === 'patient') return <MemberDashboard tab={memberTab} setTab={setMemberTab} languageId={languageId} copy={copy} routine={routine} playableMemories={playableMemories} onOpenActivity={() => { void openActivity(); }} onOpenRecipes={() => setScreen('recipes')} onChangeLanguage={() => openLanguageSettings('patient')} onSignOut={() => { setNotice(''); setScreen('login'); }} onOpenDaysPlan={() => setScreen('daysPlan')} onOpenSkills={() => setScreen('skills-home')} skillsAvailable={enabledSkills.length > 0} notice={notice} onTabChange={handleMemberTabChange} speechProgressCard={<SpeechPackProgress pack={selectedSpeechPack} status={speechPackStatus} busy={speechPackBusy} problem={speechPackProblem} progress={speechPackProgress} copy={copy} />} voiceLauncher={selectedSpeechPack && speechPackStatus === 'ready' ? <VoiceGameLauncher languageCode={speechLanguageCodeFromAppId(languageId) ?? 'en'} copy={{ ask: copy.voiceAsk, example: copy.voiceExample, start: copy.voiceStart, listening: copy.voiceListening, stop: copy.voiceStop, processing: copy.voiceProcessing, permission: copy.voicePermission, problem: copy.voiceProblem, close: copy.voiceClose }} onAudio={openVoiceSelectedGame} /> : undefined} />;
+  return null;
 }
 
 export default function SaathiWorkflow() {
@@ -477,10 +610,14 @@ export default function SaathiWorkflow() {
   const [activeDashboard, setActiveDashboard] = useState<DashboardScreen>('dashboard');
   const [showRoleSwitch, setShowRoleSwitch] = useState(false);
   const [dashboardTitle, setDashboardTitle] = useState('Dashboard');
+  const handleDashboardChange = useCallback((screen: DashboardScreen | null, title?: string) => {
+    if (screen) { setActiveDashboard(screen); setDashboardTitle(title ?? 'Dashboard'); setShowRoleSwitch(true); }
+    else setShowRoleSwitch(false);
+  }, []);
   return <ExitPromptContext.Provider value={{ showExitPrompt: () => setExitPromptVisible(true) }}>
     <View style={styles.appRoot}>
       {showRoleSwitch ? <SafeAreaView style={styles.dashboardHeaderSafe}><View style={styles.dashboardBar}><Text style={styles.dashboardBarTitle}>{dashboardTitle}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Switch to ${activeDashboard === 'patient' ? 'Caregiver' : 'Member'} dashboard`} onPress={() => setRoleTarget(activeDashboard === 'patient' ? 'dashboard' : 'patient')} style={({ pressed }) => [styles.dashboardRoleSwitch, pressed && styles.pressed]}><Text style={styles.roleSwitchText}>{activeDashboard === 'patient' ? 'Caregiver' : 'Member'}</Text></Pressable></View></SafeAreaView> : null}
-      <SaathiWorkflowContent roleTarget={roleTarget} onRoleTargetHandled={() => setRoleTarget(null)} onDashboardChange={(screen, title) => { if (screen) { setActiveDashboard(screen); setDashboardTitle(title ?? 'Dashboard'); setShowRoleSwitch(true); } else setShowRoleSwitch(false); }} />
+      <SaathiWorkflowContent roleTarget={roleTarget} onRoleTargetHandled={() => setRoleTarget(null)} onDashboardChange={handleDashboardChange} />
     </View>
     <Modal transparent visible={exitPromptVisible} animationType="fade" onRequestClose={() => setExitPromptVisible(false)}>
       <View style={styles.exitScrim}>
@@ -508,18 +645,27 @@ const styles = StyleSheet.create({
   headerBackButton: { alignSelf: 'flex-start', minHeight: 64, justifyContent: 'center', paddingHorizontal: 8, marginLeft: -8 },
   backText: { color: theme.colors.leaf, fontSize: theme.type.guardian, fontWeight: '800' },
   safe: { flex: 1, backgroundColor: theme.colors.canvas }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }, scroll: { padding: theme.spacing.page, paddingTop: 96, gap: theme.spacing.gap, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' }, scrollWithoutBack: { paddingTop: theme.spacing.page }, patientScroll: { paddingBottom: 48 }, stack: { gap: 14 }, header: { gap: 10 }, headerContainer: { gap: 12 }, brand: { flexDirection: 'row', alignItems: 'center', gap: 10 }, leafMark: { alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.leaf, borderWidth: 2, borderColor: theme.colors.focus }, leafBlade: { position: 'absolute', backgroundColor: theme.colors.white, transform: [{ rotate: '-38deg' }] }, leafVein: { position: 'absolute', width: 2, borderRadius: 1, backgroundColor: theme.colors.leaf, transform: [{ rotate: '-38deg' }] }, brandText: { color: theme.colors.leaf, fontSize: theme.type.guardian, fontWeight: '800' }, eyebrow: { color: theme.colors.mutedInk, fontSize: theme.type.meta, fontWeight: '700', letterSpacing: .4 }, title: { color: theme.colors.ink, fontSize: 32, fontWeight: '800', lineHeight: 40 }, body: { color: theme.colors.mutedInk, fontSize: theme.type.guardian, lineHeight: 27 }, panel: { padding: 22, gap: 12, borderRadius: theme.radius.media, backgroundColor: theme.colors.leafSoft, borderWidth: 1, borderColor: theme.colors.leaf }, archive: { padding: 18, gap: 12, borderRadius: theme.radius.media, backgroundColor: theme.colors.amberSoft, borderWidth: 1, borderColor: theme.colors.amber }, overline: { color: theme.colors.leaf, fontSize: 13, fontWeight: '800', letterSpacing: .7 }, panelTitle: { color: theme.colors.ink, fontSize: 28, fontWeight: '800' }, photo: { alignItems: 'center', padding: 18, gap: 12, backgroundColor: theme.colors.surface, borderRadius: theme.radius.media }, patientHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, people: { flexDirection: 'row', gap: 8 }, greeting: { color: theme.colors.mutedInk, fontSize: theme.type.patientSmall }, patientName: { color: theme.colors.ink, fontSize: theme.type.display, fontWeight: '800', lineHeight: 46 }, reminder: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media, padding: 20, gap: 8 }, reminderTitle: { color: theme.colors.ink, fontSize: theme.type.patient, fontWeight: '800' }, section: { color: theme.colors.ink, fontSize: theme.type.patient, fontWeight: '800' }, game: { backgroundColor: theme.colors.white, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media, paddingHorizontal: 20, paddingVertical: 16, gap: 8 }, frame: { alignItems: 'center', gap: 10, padding: 22, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media }, frameName: { color: theme.colors.ink, fontSize: theme.type.display, fontWeight: '800', textAlign: 'center' }, relationship: { color: theme.colors.leaf, fontSize: theme.type.patient, fontWeight: '700' }, note: { color: theme.colors.mutedInk, fontSize: theme.type.guardian, lineHeight: 26, textAlign: 'center' }, prompt: { alignItems: 'center', padding: 28, gap: 8, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media },
-  languageHeader: { alignItems: 'center', gap: 8, marginTop: 32, marginBottom: 24 },
+  languageHeader: { alignItems: 'center', gap: 6, marginTop: 24, marginBottom: 18 },
   loginBrand: { alignItems: 'center', gap: 8, marginTop: 32 },
   scrollWithFooter: { paddingBottom: 124 },
   fixedFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: theme.spacing.page, paddingTop: 6, paddingBottom: 8, backgroundColor: theme.colors.canvas },
+  floatingVoice: { position: 'absolute', right: theme.spacing.page, bottom: 82, zIndex: 2 },
   memberNav: { flexDirection: 'row', gap: 8 },
   memberNavItem: { flex: 1, minHeight: 56, justifyContent: 'center', alignItems: 'center', borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.white, paddingHorizontal: 6 },
   memberNavItemActive: { backgroundColor: theme.colors.leaf, borderColor: theme.colors.leaf },
   memberNavText: { color: theme.colors.ink, fontSize: theme.type.meta, fontWeight: '800', textAlign: 'center' },
   memberNavTextActive: { color: theme.colors.white },
   settingsPanel: { gap: 12, padding: 20, borderRadius: theme.radius.media, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  memberSettingsPanel: { gap: 10, padding: 16, borderRadius: theme.radius.media, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  settingsLabel: { color: theme.colors.leaf, fontSize: 13, fontWeight: '800', letterSpacing: .7 },
+  signOutAction: { marginTop: 8 },
   settingsValue: { color: theme.colors.ink, fontSize: theme.type.patientSmall, fontWeight: '800' },
-  inviteId: { color: theme.colors.leaf, fontSize: theme.type.meta, fontWeight: '800' },
+  inviteId: { color: theme.colors.leaf, fontSize: theme.type.meta, fontWeight: '800', letterSpacing: 1.4 },
+  inviteIdUnavailable: { color: theme.colors.mutedInk, letterSpacing: 0 },
+  caregiverIntro: { gap: 8, paddingBottom: 4 },
+  caregiverGameRow: { gap: 14, padding: 18, borderRadius: theme.radius.media, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.white },
+  caregiverGameCopy: { gap: 6 },
+  caregiverGameTitle: { color: theme.colors.ink, fontSize: 22, fontWeight: '800' },
   routineRow: { flexDirection: 'row', gap: 14, alignItems: 'flex-start', padding: 18, borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.white },
   medicationRow: { borderColor: theme.colors.amber, backgroundColor: theme.colors.amberSoft },
   routineTime: { color: theme.colors.leaf, fontSize: theme.type.guardian, fontWeight: '800', minWidth: 52 },
@@ -529,12 +675,23 @@ const styles = StyleSheet.create({
   medicationLabel: { color: theme.colors.ink, fontSize: theme.type.meta, fontWeight: '800', marginTop: 4 },
   fieldLabel: { color: theme.colors.ink, fontSize: theme.type.guardian, fontWeight: '700' },
   gameCardReady: { borderColor: theme.colors.leaf, borderWidth: 2 },
+  gameCoverFrame: {
+    width: '100%',
+    height: 144,
+    borderRadius: theme.radius.control,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.leafSoft,
+  },
+  gameCover: {
+    width: '100%',
+    height: '100%',
+  },
   patientSectionTitle: { color: theme.colors.ink, fontSize: theme.type.patient, fontWeight: '800', marginTop: 4 },
   appName: { color: theme.colors.leaf, fontSize: 24, fontWeight: '800' },
   languageTitle: { color: theme.colors.ink, fontSize: 28, fontWeight: '800', letterSpacing: 1.5, marginTop: 12 },
   bgTop: { position: 'absolute', top: 0, left: 0, width: '100%', height: 200, opacity: 0.28, resizeMode: 'cover' },
   bgBottom: { position: 'absolute', bottom: 0, left: 0, width: '100%', height: 200, opacity: 0.28, resizeMode: 'cover' },
-  languageOption: { minHeight: 64, paddingHorizontal: 20, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.colors.border, backgroundColor: theme.colors.white },
+  languageOption: { minHeight: 56, paddingHorizontal: 20, borderRadius: theme.radius.control, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.colors.border, backgroundColor: theme.colors.white },
   languageOptionSelected: { backgroundColor: theme.colors.leafSoft, borderColor: theme.colors.leaf },
   languageOptionText: { color: theme.colors.ink, fontSize: theme.type.patientSmall, fontWeight: '700' },
   languageOptionTextSelected: { color: theme.colors.ink },
@@ -544,7 +701,7 @@ const styles = StyleSheet.create({
   toggleText: { fontSize: theme.type.guardian, fontWeight: '700', color: theme.colors.mutedInk },
   toggleTextActive: { color: theme.colors.white },
   appRoot: { flex: 1 },
-  dashboardHeaderSafe: { backgroundColor: theme.colors.canvas, paddingTop: dashboardStatusInset },
+  dashboardHeaderSafe: { backgroundColor: theme.colors.canvas },
   dashboardBar: { minHeight: 64, paddingHorizontal: theme.spacing.page, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.colors.border, backgroundColor: theme.colors.canvas },
   dashboardBarTitle: { color: theme.colors.ink, fontSize: 20, fontWeight: '800' },
   dashboardRoleSwitch: { minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.colors.leaf, backgroundColor: theme.colors.white },

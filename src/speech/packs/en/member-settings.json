@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.settings",
+  "languageCode": "en",
+  "title": "Settings",
+  "summary": "Comfort, language, and access settings.",
+  "utterances": [
+    { "id": "settings.intro", "groupId": "page", "kind": "description", "text": "Comfort, language, and access settings." },
+    { "id": "settings.access", "groupId": "access", "kind": "description", "text": "Use your phone's text size, screen reader, and sound settings. Saathi keeps large touch targets and calm, spoken prompts." }
+  ]
+}

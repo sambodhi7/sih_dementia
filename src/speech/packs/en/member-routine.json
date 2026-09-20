@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.routine",
+  "languageCode": "en",
+  "title": "Routine",
+  "summary": "Today's plan is prepared by your caregiver. Take each step when it feels right.",
+  "utterances": [
+    { "id": "routine.intro", "groupId": "page", "kind": "description", "text": "Today's plan is prepared by your caregiver. Take each step when it feels right." }
+  ]
+}

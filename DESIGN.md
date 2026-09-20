@@ -124,6 +124,8 @@ Motion is limited to 150–200ms pressed feedback and the gentle appearance of a
 
 Each patient prompt may play once when its activity state opens. A visible, localized Hear again action is always available. Audio never loops, never auto-advances the task, and never competes with another prompt: starting new audio cleanly stops the previous playback. Audio replay remains assistance telemetry, not patient-visible failure.
 
+Patient page speech comes from stable, ordered utterance IDs in the active language pack, not duplicated screen-handler strings. A visible labelled Listen action is canonical; double-tap and long-press are never the only way to hear content. Voice navigation is limited to an explicit allowlist of reversible navigation, repeat, and stop intents. It never answers a game or confirms a real-world task.
+
 ### Content and data visualization
 
 Voice is gentle, specific, and non-judgmental: “Let’s hear it together,” never “Incorrect.” Guardian setup, medication controls, and forms use at least 18px body text; compact dashboard metadata may use 16px only when it remains supplementary. Guardian charts use leaf/amber/neutral tones plus direct labels and textual summaries; never use colour as the only trend indicator. The dashboard reports change from a personal baseline and support needed, never diagnosis or cure.

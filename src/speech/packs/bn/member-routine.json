@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.routine",
+  "languageCode": "bn",
+  "title": "দিনের রুটিন",
+  "summary": "আজকের পরিকল্পনা আপনার যত্নকারী তৈরি করেছেন। স্বস্তি বোধ করলে এক ধাপ করে এগোন।",
+  "utterances": [
+    { "id": "routine.intro", "groupId": "page", "kind": "description", "text": "আজকের পরিকল্পনা আপনার যত্নকারী তৈরি করেছেন। স্বস্তি বোধ করলে এক ধাপ করে এগোন।" }
+  ]
+}

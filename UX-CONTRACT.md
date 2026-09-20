@@ -32,6 +32,8 @@
 | Skill catalogue cards | `src/games/skillTransmission/SkillCards.tsx` | caregiver manager / patient activity list |
 | Who’s Who practice insights | `src/components/WhosWhoMetrics.tsx` | guardian-only metric cards |
 | Navigation | `src/SaathiWorkflow.tsx` screen-state router | patient / guardian |
+| Patient speech controls | `src/components/speech.tsx` | page listen / card listen |
+| Speech pack content and runtime | `src/speech` | bundled preview / downloaded offline pack |
 
 ## Flow ledger
 
@@ -48,6 +50,8 @@
 | Leave active recall | Home | Appends an abandonment event and pauses/reschedules only through the per-item distress rule | Interrupted sessions do not create a scored outcome |
 | Configure Skill Transmission | Record a caregiver prompt, then show/hide a fixed catalogue skill | Saves the local prompt and visibility state; no custom skill creation is offered | A missing or denied microphone permission keeps the skill hidden and preserves all existing settings |
 | Complete Skill Transmission | Finish every large, forgiving touch action in a supported skill | Detects completion automatically, appends engagement-only events, stores an optional local completion photo, and returns to skill choices or Home | A missed gesture resets calmly; leaving before completion marks the activity interrupted with no controller outcome or cognitive score |
+| Listen to a patient page or card | Tap the visible Listen action | Stops any current speech and reads ordered utterances from the active page pack once | When the active language pack is unavailable, normal touch navigation remains available and no mismatched language is spoken |
+| Use a voice navigation command | Tap the labelled microphone action after an STT pack is ready | Resolves an allowlisted navigation, repeat, or stop intent through the existing screen router | Low-confidence speech performs no action and gives calm guidance; voice never answers a game or confirms a medication task |
 
 ## Offline behavior
 

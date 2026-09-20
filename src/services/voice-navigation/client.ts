@@ -15,6 +15,6 @@ export async function resolveVoiceNavigation(request: VoiceNavigationRequest, ac
   const response = await fetch(endpoint, { method: 'POST', headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined, body });
   if (!response.ok) throw new Error(`Voice navigation request failed (${response.status}).`);
   const result = await response.json() as VoiceNavigationResponse;
-  if (!['start_whos_who', 'repeat', 'go_home', 'caregiver_area', 'stop', 'unknown'].includes(result.intent)) throw new Error('Voice navigation returned an unsupported intent.');
+  if (!['start_whos_who', 'start_recipe', 'start_days_plan', 'start_skills', 'repeat', 'go_home', 'caregiver_area', 'stop', 'unknown'].includes(result.intent)) throw new Error('Voice navigation returned an unsupported intent.');
   return result;
 }

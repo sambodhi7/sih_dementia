@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.settings",
+  "languageCode": "hi",
+  "title": "सेटिंग्स",
+  "summary": "आराम, भाषा और उपयोग की सुविधाएँ।",
+  "utterances": [
+    { "id": "settings.intro", "groupId": "page", "kind": "description", "text": "आराम, भाषा और उपयोग की सुविधाएँ।" },
+    { "id": "settings.access", "groupId": "access", "kind": "description", "text": "फ़ोन के टेक्स्ट आकार, स्क्रीन रीडर और ध्वनि सेटिंग्स का उपयोग करें। Saathi बड़े स्पर्श क्षेत्र और शांत बोले गए निर्देश रखता है।" }
+  ]
+}

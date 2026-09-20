@@ -3,6 +3,7 @@
     "name": "Saathi",
     "slug": "saathi-ui",
     "version": "0.1.0",
+    "icon": "./assets/images/branding/saathi-app-icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "platforms": [

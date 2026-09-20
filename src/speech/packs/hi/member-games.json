@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.games",
+  "languageCode": "hi",
+  "title": "Games",
+  "summary": "आज के लिए एक शांत गतिविधि चुनें।",
+  "utterances": [
+    { "id": "games.intro", "groupId": "page", "kind": "description", "text": "आज के लिए एक शांत गतिविधि चुनें।" },
+    { "id": "games.whos-who.title", "groupId": "whos-who", "kind": "heading", "text": "Who's Who." },
+    { "id": "games.whos-who.description", "groupId": "whos-who", "kind": "description", "text": "जाने-पहचाने चेहरे और नाम, अपनी गति से।" },
+    { "id": "games.recipe.title", "groupId": "recipe", "kind": "heading", "text": "Recipe." },
+    { "id": "games.recipe.description", "groupId": "recipe", "kind": "description", "text": "किसी परिचित व्यंजन को शांति से, एक-एक कदम करके बनाएँ।" },
+    { "id": "games.days-plan.title", "groupId": "days-plan", "kind": "heading", "text": "Day's Plan." },
+    { "id": "games.days-plan.description", "groupId": "days-plan", "kind": "description", "text": "अपनी दिनचर्या के परिचित पलों को एक-एक करके देखें।" },
+    { "id": "games.skills.title", "groupId": "skills", "kind": "heading", "text": "Learn Together." },
+    { "id": "games.skills.description", "groupId": "skills", "kind": "description", "text": "किसी परिचित हाथ के काम का साथ मिलकर अभ्यास करें।" }
+  ]
+}

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, BackHandler, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import * as Speech from 'expo-speech';
 import { theme } from '../../theme';
 import { touchFeedback } from '../../lib/haptics';
+import { speechLanguageCodeFromAppId } from '../../speech/packRegistry';
+import { speakText, stopSpeaking } from '../../speech/runtime';
 import { startWhosWhoSession, persistGameEvent } from '../../storage/sessions';
 import { closeRecipeSession } from './storage';
 import { setLocalSetting } from '../../storage/items';
@@ -39,17 +40,18 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
   const step = recipe ? recipes[recipe][stepIndex] : null;
   const itemId = recipe && step ? `recipe:${recipe}:${step.id}` : '';
   const spoken = selected ? `${copy.add}: ${copy.ingredients[selected]}` : done ? copy.thanks : step?.action ? copy.actions[step.action] : copy.next;
+  const speechLanguageCode = speechLanguageCodeFromAppId(language) ?? 'en';
 
   useEffect(() => {
     const motionListener = animation.addListener(({value}) => setProgress(value));
     void AccessibilityInfo.isReduceMotionEnabled().then(value => { reducedMotion.current = value; });
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', value => { reducedMotion.current = value; });
-    return () => { sub.remove(); animation.removeListener(motionListener); animation.stopAnimation(); void Speech.stop().catch(() => undefined); };
+    return () => { sub.remove(); animation.removeListener(motionListener); animation.stopAnimation(); void stopSpeaking().catch(() => undefined); };
   }, [animation]);
   const say = async (text: string) => {
     try {
-      await Speech.stop();
-      Speech.speak(text, { language: 'en-IN', rate: .85, onError: () => setProblem(copy.audioProblem) });
+      await stopSpeaking();
+      await speakText(text, { languageCode: speechLanguageCode, rate: .85 });
     } catch { setProblem(copy.audioProblem); }
   };
   useEffect(() => { if (recipe) void say(spoken); }, [recipe, stepIndex, selected, done]);
@@ -63,7 +65,7 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
   };
   const leave = () => { void perform(async () => {
     // Unavailable speech must never prevent returning home.
-    await Speech.stop().catch(() => undefined);
+    await stopSpeaking().catch(() => undefined);
     if (session.current) await closeRecipeSession(session.current, !done);
     session.current = null; onHome();
   }); };
@@ -137,7 +139,7 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
     if (step?.choices) await say(step.choices.filter(i => !used.includes(i)).map(i => copy.ingredients[i]).join(', '));
   }); };
   return <ScrollView ref={scroll} contentContainerStyle={s.page}>
-    <Text style={s.eyebrow}>{copy.title}</Text>
+    <View style={s.intro}><Text style={s.eyebrow}>{copy.title}</Text>
     {!recipe ? <><Text style={s.title}>{copy.choose}</Text><Text style={s.body}>{copy.invitation}</Text>{(Object.keys(recipes) as RecipeId[]).map(id => <Pressable key={id} accessibilityRole="button" accessibilityLabel={copy.names[id]} disabled={busy} hitSlop={6} pressRetentionOffset={16} onPressIn={() => touchFeedback()} onPress={() => open(id)} style={({pressed}) => [s.card, (pressed || busy) && s.pressed]}><View pointerEvents="none" style={{height: 150}}><RecipeArt recipe={id} ingredients={pantry[id]} spread rolled served /></View><Text pointerEvents="none" style={s.heading}>{copy.names[id]}</Text><Text pointerEvents="none" style={s.body}>{copy.descriptions[id]}</Text></Pressable>)}<Text style={s.body}>{copy.symbolic}</Text></>
     : <><Text style={s.title}>{done ? copy.finish : copy.names[recipe]}</Text><Text accessibilityLiveRegion="polite" style={s.heading}>{spoken}</Text>
       {pending ? <View accessibilityLiveRegion="polite" style={s.familyNote}><Text style={s.heading}>{copy.variant}</Text><Text style={s.body}>{copy.family}</Text><Button text={`${copy.continue}: ${copy.ingredients[pending]}`} onPress={() => { animation.setValue(0); setSelected(pending); setPending(null); assisted.current = true; }} secondary/><Button text={copy.hint} onPress={() => { setPending(null); reveal(); }} secondary/></View> : null}
@@ -152,15 +154,15 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
         {!canMove && <Button text={copy.hint} onPress={reveal} disabled={busy} secondary/>}
       </>}
     </>}
-    {busy ? <Text accessibilityLiveRegion="polite" style={s.status}>{copy.saving}</Text> : null}
+    </View>{busy ? <Text accessibilityLiveRegion="polite" style={s.status}>{copy.saving}</Text> : null}
     {problem ? <Text accessibilityLiveRegion="polite" style={s.problem}>{problem}</Text> : null}
     <Button text={copy.home} onPress={leave} disabled={busy} secondary/>
   </ScrollView>;
 }
 const s = StyleSheet.create({
-  page: {padding: theme.spacing.page, paddingTop: 48, paddingBottom: 40, gap: 20, backgroundColor: theme.colors.canvas, flexGrow: 1, width: '100%', maxWidth: 680, alignSelf: 'center'},
-  eyebrow: {fontSize: 20, color: theme.colors.leaf, fontWeight: '700'}, title: {fontSize: 36, color: theme.colors.ink, fontWeight: '700'}, heading: {fontSize: 26, color: theme.colors.ink, fontWeight: '700'}, body: {fontSize: 22, lineHeight: 31, color: theme.colors.mutedInk},
-  card: {padding: 18, borderRadius: theme.radius.media, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border, gap: 14},
+  page: {padding: theme.spacing.page, paddingTop: 32, paddingBottom: 40, gap: 20, backgroundColor: theme.colors.canvas, flexGrow: 1, width: '100%', maxWidth: 680, alignSelf: 'center'},
+  intro: {gap: 20}, eyebrow: {fontSize: 14, color: theme.colors.leaf, fontWeight: '800', letterSpacing: .7}, title: {fontSize: 36, color: theme.colors.ink, fontWeight: '700'}, heading: {fontSize: 26, color: theme.colors.ink, fontWeight: '700'}, body: {fontSize: 22, lineHeight: 31, color: theme.colors.mutedInk},
+  card: {padding: 18, borderRadius: theme.radius.media, backgroundColor: theme.colors.white, borderWidth: 1, borderColor: theme.colors.border, gap: 14},
   scene: {height: 260, backgroundColor: theme.colors.surface, borderRadius: theme.radius.media, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.border}, floating: {position: 'absolute', top: 10, left: '30%', width: '40%'}, arrow: {position: 'absolute', bottom: 6, alignSelf: 'center', color: theme.colors.amber, fontSize: 34},
   choices: {gap: 14}, ingredient: {minHeight: 104, flexDirection: 'row', alignItems: 'center', padding: 14, borderWidth: 2, borderColor: theme.colors.border, borderRadius: theme.radius.control, backgroundColor: theme.colors.white},
   label: {fontSize: 24, color: theme.colors.ink, flex: 1, fontWeight: '700'}, highlight: {borderColor: theme.colors.amber, backgroundColor: theme.colors.amberSoft},

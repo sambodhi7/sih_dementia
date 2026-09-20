@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.settings",
+  "languageCode": "as",
+  "title": "ছেটিংছ",
+  "summary": "আৰাম, ভাষা আৰু ব্যৱহাৰৰ সুবিধা।",
+  "utterances": [
+    { "id": "settings.intro", "groupId": "page", "kind": "description", "text": "আৰাম, ভাষা আৰু ব্যৱহাৰৰ সুবিধা।" },
+    { "id": "settings.access", "groupId": "access", "kind": "description", "text": "ফোনৰ লিখনীৰ আকাৰ, স্ক্ৰিন ৰিডাৰ আৰু শব্দৰ ছেটিংছ ব্যৱহাৰ কৰক। Saathi-ত ডাঙৰ স্পৰ্শ ক্ষেত্ৰ আৰু শান্ত কথিত নিৰ্দেশ থাকে।" }
+  ]
+}

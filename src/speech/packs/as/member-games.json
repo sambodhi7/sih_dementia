@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.games",
+  "languageCode": "as",
+  "title": "Games",
+  "summary": "আজিৰ বাবে এটা শান্ত কাৰ্যকলাপ বাছনি কৰক।",
+  "utterances": [
+    { "id": "games.intro", "groupId": "page", "kind": "description", "text": "আজিৰ বাবে এটা শান্ত কাৰ্যকলাপ বাছনি কৰক।" },
+    { "id": "games.whos-who.title", "groupId": "whos-who", "kind": "heading", "text": "Who's Who." },
+    { "id": "games.whos-who.description", "groupId": "whos-who", "kind": "description", "text": "চিনাকি মুখ আৰু নাম, আপোনাৰ নিজৰ গতিৰে।" },
+    { "id": "games.recipe.title", "groupId": "recipe", "kind": "heading", "text": "Recipe." },
+    { "id": "games.recipe.description", "groupId": "recipe", "kind": "description", "text": "এটা চিনাকি ৰেচিপি শান্তভাৱে, এটাকৈ ধাপ অনুসৰণ কৰক।" },
+    { "id": "games.days-plan.title", "groupId": "days-plan", "kind": "heading", "text": "Day's Plan." },
+    { "id": "games.days-plan.description", "groupId": "days-plan", "kind": "description", "text": "আপোনাৰ দৈনিক পৰিকল্পনাৰ চিনাকি মুহূৰ্তবোৰ অনুসৰণ কৰক।" },
+    { "id": "games.skills.title", "groupId": "skills", "kind": "heading", "text": "Learn Together." },
+    { "id": "games.skills.description", "groupId": "skills", "kind": "description", "text": "এটা চিনাকি হাতে-কাম কৰা কাৰ্যকলাপ একেলগে অভ্যাস কৰক।" }
+  ]
+}

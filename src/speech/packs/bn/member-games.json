@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "pageId": "member.games",
+  "languageCode": "bn",
+  "title": "Games",
+  "summary": "আজকের জন্য একটি শান্ত কার্যকলাপ বেছে নিন।",
+  "utterances": [
+    { "id": "games.intro", "groupId": "page", "kind": "description", "text": "আজকের জন্য একটি শান্ত কার্যকলাপ বেছে নিন।" },
+    { "id": "games.whos-who.title", "groupId": "whos-who", "kind": "heading", "text": "Who's Who." },
+    { "id": "games.whos-who.description", "groupId": "whos-who", "kind": "description", "text": "পরিচিত মুখ ও নাম, আপনার নিজের গতিতে।" },
+    { "id": "games.recipe.title", "groupId": "recipe", "kind": "heading", "text": "Recipe." },
+    { "id": "games.recipe.description", "groupId": "recipe", "kind": "description", "text": "একটি পরিচিত রেসিপি শান্তভাবে, এক ধাপ করে অনুসরণ করুন।" },
+    { "id": "games.days-plan.title", "groupId": "days-plan", "kind": "heading", "text": "Day's Plan." },
+    { "id": "games.days-plan.description", "groupId": "days-plan", "kind": "description", "text": "আপনার দৈনিক পরিকল্পনার পরিচিত মুহূর্তগুলো অনুসরণ করুন।" },
+    { "id": "games.skills.title", "groupId": "skills", "kind": "heading", "text": "Learn Together." },
+    { "id": "games.skills.description", "groupId": "skills", "kind": "description", "text": "একটি পরিচিত হাতে-কলমে কাজ একসঙ্গে অনুশীলন করুন।" }
+  ]
+}
