@@ -4,6 +4,7 @@ import type { GestureResponderEvent } from 'react-native';
 
 import { theme } from '../theme';
 import { touchFeedback } from '../lib/haptics';
+import { useSpeechGuide } from '../speech/guide';
 
 type ActionButtonProps = {
   label: string;
@@ -14,13 +15,14 @@ type ActionButtonProps = {
 };
 
 export function ActionButton({ label, onPress, variant = 'primary', disabled = false, compact = false }: ActionButtonProps) {
+  const { speakAction } = useSpeechGuide();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
       hitSlop={compact ? undefined : 4}
-      onPress={(event) => { touchFeedback(); onPress(event); }}
+      onPress={(event) => { touchFeedback(); speakAction(label); onPress(event); }}
       style={({ pressed }) => [
         styles.button,
         compact && styles.compactButton,

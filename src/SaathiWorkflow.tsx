@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { RecipeGame } from './games/recipe/RecipeGame';
 import { getRecipeCopy } from './games/recipe/copy';
@@ -9,7 +9,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import type { ControllerState, GameEvent, SessionOutcome } from './services/adaptive/types';
 import { whosWhoChoiceIds, whosWhoOptionCount } from './services/adaptive/whosWhoPresentation';
 import { AudioCapture, AudioReplay } from './components/audio';
-import { ListenButton, PageListenCard } from './components/speech';
+import { ListenButton } from './components/speech';
 import { VoiceGameLauncher } from './components/VoiceGameLauncher';
 import { LanguagePackDownload } from './components/LanguagePackDownload';
 import { CaregiverMetrics } from './components/CaregiverMetrics';
@@ -42,6 +42,11 @@ import { configureSpeechRuntime } from './speech/nativeRuntime';
 import { resolveOfflineVoiceNavigation } from './speech/recognition';
 import { voiceCommandsFor } from './speech/voiceCommands';
 import type { DownloadableSpeechPack, SpeechPackManifest, SpeechPackStatus } from './speech/types';
+import type { VoiceNavigationResponse } from './services/voice-navigation/types';
+import { isVoiceNavigationConfigured, resolveVoiceNavigation } from './services/voice-navigation/client';
+import { matchVoiceIntent } from './services/voice-navigation/matcher';
+import { SpeechGuideProvider, useAutoReadText, useSpeechGuide } from './speech/guide';
+import { stopSpeaking } from './speech/runtime';
 
 type Screen = 'recipes' | 'language' | 'onboarding' | 'login' | 'dashboard' | 'manager' | 'editor' | 'daysPlanEditor' | 'daysPlan' | 'patient' | 'learning' | 'recall' | 'waiting' | 'skills-manager' | 'skills-home' | 'skill-invitation' | 'skill-active' | 'skill-complete' | 'metrics' | 'routineManager';
 type MemberTab = 'home' | 'routine' | 'settings';
@@ -79,7 +84,8 @@ function authProblemMessage(message?: string) {
 }
 
 function PhotoAnswer({ item, onPress, label }: { item: WhosWhoItem; onPress: (event: GestureResponderEvent) => void; label?: string }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={`Photo option: ${item.name}`} onPress={(event) => { touchFeedback(); onPress(event); }} style={({ pressed }) => [styles.photoAnswer, pressed && styles.pressed]}><Portrait uri={item.photoUri ?? undefined} name={item.name} size={132} /><Text style={styles.photoAnswerText}>{label ?? copy.chooseThisPhoto}</Text></Pressable>;
+  const { speakAction } = useSpeechGuide();
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Photo option: ${item.name}`} onPress={(event) => { touchFeedback(); speakAction(item.name); onPress(event); }} style={({ pressed }) => [styles.photoAnswer, pressed && styles.pressed]}><Portrait uri={item.photoUri ?? undefined} name={item.name} size={132} /><Text style={styles.photoAnswerText}>{label ?? copy.chooseThisPhoto}</Text></Pressable>;
 }
 
 function LeafMark({ size = 34 }: { size?: number }) {
@@ -97,8 +103,11 @@ function AppMark({ size = 64 }: { size?: number }) {
   return <Image accessibilityLabel="Saathi" source={appIcon} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
-function Header({ title, eyebrow }: { title: string; eyebrow?: string; onBack?: () => void; copy?: any }) {
-  return <View style={styles.header}>{eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}<Text style={styles.title}>{title}</Text></View>;
+function Header({ title, eyebrow, onBack, copy }: { title: string; eyebrow?: string; onBack?: () => void; copy?: any }) {
+  const { speakAction } = useSpeechGuide();
+  const backLabel = copy?.back ?? 'Back';
+  useAutoReadText([eyebrow, title].filter(Boolean).join('. '), `header:${eyebrow ?? ''}:${title}`);
+  return <View style={styles.header}>{onBack ? <Pressable accessibilityRole="button" accessibilityLabel={backLabel} hitSlop={8} onPress={() => { touchFeedback(); speakAction(backLabel); onBack(); }} style={({ pressed }) => [styles.headerBackButton, pressed && styles.pressed]}><Text style={styles.backText}>{`‹ ${backLabel}`}</Text></Pressable> : null}{eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}<Text style={styles.title}>{title}</Text></View>;
 }
 
 function GameCover({ source, label }: { source: number; label: string }) {
@@ -114,8 +123,9 @@ function Layout({ children, patient = false, footer, dashboard = false, floating
 }
 
 function DashboardBottomNav({ active, onChange, tabs }: { active: string; onChange: (tab: string) => void; tabs: ReadonlyArray<readonly [string, string]> }) {
+  const { speakAction } = useSpeechGuide();
   return <View style={styles.memberNav} accessibilityRole="tablist">
-    {tabs.map(([id, label]) => <Pressable key={id} hitSlop={4} accessibilityRole="tab" accessibilityState={{ selected: active === id }} onPress={() => { touchFeedback(); onChange(id); }} style={({ pressed }) => [styles.memberNavItem, active === id && styles.memberNavItemActive, pressed && styles.pressed]}><Text style={[styles.memberNavText, active === id && styles.memberNavTextActive]}>{label}</Text></Pressable>)}
+    {tabs.map(([id, label]) => <Pressable key={id} hitSlop={4} accessibilityRole="tab" accessibilityState={{ selected: active === id }} onPress={() => { touchFeedback(); speakAction(label); onChange(id); }} style={({ pressed }) => [styles.memberNavItem, active === id && styles.memberNavItemActive, pressed && styles.pressed]}><Text style={[styles.memberNavText, active === id && styles.memberNavTextActive]}>{label}</Text></Pressable>)}
   </View>;
 }
 
@@ -129,12 +139,13 @@ function MemberDashboard({ tab, setTab, languageId, copy, routine, playableMemor
   const speechLanguageCode = speechLanguageCodeFromAppId(languageId);
   const speechPageId = tab === 'home' ? 'member.games' : tab === 'routine' ? 'member.routine' : 'member.settings';
   const speechPage = speechLanguageCode ? getBundledSpeechPage(speechLanguageCode, speechPageId) : null;
+  const pageSpeechText = speechPage ? speechTextFor(speechPage) : '';
+  useAutoReadText(pageSpeechText, `member:${speechPageId}:${languageId}`);
   useEffect(() => { onTabChange(tab === 'home' ? copy.gamesTab : tab === 'routine' ? copy.routineTab : copy.settingsTab); }, [copy.gamesTab, copy.routineTab, copy.settingsTab, onTabChange, tab]);
   const listenCard = (groupId: string) => speechPage ? <ListenButton text={speechTextFor(speechPage, groupId)} languageCode={speechPage.languageCode} label={copy.listenCard} stopLabel={copy.stopListening} /> : null;
-  return <Layout patient dashboard floating={tab === 'home' ? voiceLauncher : undefined} footer={<DashboardBottomNav active={tab} onChange={(nextTab) => setTab(nextTab as MemberTab)} tabs={[['home', copy.gamesTab], ['routine', copy.routineTab], ['settings', copy.settingsTab]]} />}>
+  return <Layout patient dashboard floating={voiceLauncher} footer={<DashboardBottomNav active={tab} onChange={(nextTab) => setTab(nextTab as MemberTab)} tabs={[['home', copy.gamesTab], ['routine', copy.routineTab], ['settings', copy.settingsTab]]} />}>
     {speechProgressCard}
     {notice ? <Notice>{notice}</Notice> : null}
-    {speechPage ? <PageListenCard title={copy.listenPage} description={copy.listenDescription} listenLabel={copy.listen} stopLabel={copy.stopListening} text={speechTextFor(speechPage)} languageCode={speechPage.languageCode} /> : null}
     {tab === 'home' ? <>
       <Text style={styles.body}>{copy.chooseActivityToday}</Text>
       <View style={[styles.game, styles.gameCardReady]}><GameCover source={gameCovers.whosWho} label={copy.whosDescription} /><Text style={styles.overline}>{copy.memoryActivity}</Text><Text style={styles.panelTitle}>Who's Who</Text><Text style={styles.body}>{playableMemories ? copy.whosDescription : copy.caregiverAddDescription}</Text>{listenCard('whos-who')}<ActionButton label={copy.openWhosWho} onPress={onOpenActivity} disabled={!playableMemories} /></View>
@@ -158,7 +169,27 @@ function hintMessage(item: WhosWhoItem, level: number): string | null {
 
 function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardChange }: { roleTarget: DashboardScreen | null; onRoleTargetHandled: () => void; onDashboardChange: (screen: DashboardScreen | null, title?: string) => void }) {
   const { showExitPrompt } = useContext(ExitPromptContext);
-  const [screen, setScreen] = useState<Screen>('language');
+  const { setLanguageCode } = useSpeechGuide();
+  const [screenStack, setScreenStack] = useState<Screen[]>(['language']);
+  const screen = screenStack[screenStack.length - 1];
+  const setScreen = useCallback((next: Screen) => {
+    setScreenStack((current) => {
+      if (next === 'login') return ['login'];
+      if (current[current.length - 1] === next) return current;
+      const existingIndex = current.lastIndexOf(next);
+      return existingIndex >= 0 ? current.slice(0, existingIndex + 1) : [...current, next];
+    });
+  }, []);
+  const replaceScreen = useCallback((next: Screen) => {
+    setScreenStack((current) => [...current.slice(0, -1), next]);
+  }, []);
+  const resetScreen = useCallback((next: Screen) => setScreenStack([next]), []);
+  const returnToScreen = useCallback((next: Screen) => {
+    setScreenStack((current) => {
+      const destinationIndex = current.lastIndexOf(next);
+      return destinationIndex >= 0 ? current.slice(0, destinationIndex + 1) : [next];
+    });
+  }, []);
   const [languageReturnScreen, setLanguageReturnScreen] = useState<Screen>('login');
   const [ready, setReady] = useState(false);
   const [languageId, setLanguageId] = useState(seed.languagePacks[0].id);
@@ -205,15 +236,24 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const [speechPackProgress, setSpeechPackProgress] = useState(0);
   const [speechPackBusy, setSpeechPackBusy] = useState(false);
   const [speechPackProblem, setSpeechPackProblem] = useState(false);
+  const [recipeBackRequest, setRecipeBackRequest] = useState(0);
+  const voiceBackRef = useRef<() => boolean>(() => false);
 
   useEffect(() => {
     if (!roleTarget) return;
     setNotice('');
-    setScreen(roleTarget);
+    resetScreen(roleTarget);
     onRoleTargetHandled();
-  }, [onRoleTargetHandled, roleTarget]);
+  }, [onRoleTargetHandled, resetScreen, roleTarget]);
 
-  useEffect(() => { onDashboardChange(screen === 'dashboard' || screen === 'patient' ? screen : null, screen === 'dashboard' ? caregiverTab === 'games' ? 'Games' : caregiverTab === 'insights' ? 'Insights' : 'Settings' : undefined); }, [caregiverTab, onDashboardChange, screen]);
+  useEffect(() => {
+    const title = screen === 'dashboard'
+      ? caregiverTab === 'games' ? 'Games' : caregiverTab === 'insights' ? 'Insights' : 'Settings'
+      : screen === 'patient'
+        ? memberTab === 'home' ? 'Games' : memberTab === 'routine' ? 'Routine' : 'Settings'
+        : undefined;
+    onDashboardChange(screen === 'dashboard' || screen === 'patient' ? screen : null, title);
+  }, [caregiverTab, memberTab, onDashboardChange, screen]);
 
   useEffect(() => {
     if (notice !== 'Signed in.') return;
@@ -226,7 +266,15 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   // localized strings while falling back to the current game copy for any
   // activity labels they do not yet translate.
   const copy = useMemo<any>(() => ({ ...seed.app.copy, ...(translations[languageId] ?? translations.english) }), [languageId]);
+  useEffect(() => { setLanguageCode(speechLanguageCodeFromAppId(languageId) ?? 'en'); }, [languageId, setLanguageCode]);
   const selectedSpeechPack = useMemo(() => speechPackForAppLanguage(languageId), [languageId]);
+  const caregiverSpeech = useMemo(() => {
+    if (screen !== 'dashboard') return '';
+    if (caregiverTab === 'games') return `${copy.gamesTab}. ${copy.prepareActivities}. ${copy.prepareActivitiesHint}. ${copy.manageWhosWho}. ${copy.prepareTodayPlan}. ${copy.manageSkills}.`;
+    if (caregiverTab === 'insights') return `${copy.practiceInsights}. ${copy.insightsNotice}`;
+    return `${copy.settingsTab}. ${copy.assignedMember}. ${setup.patientName || copy.noMemberAssigned}. ${copy.inviteId}. ${inviteCode === '—' ? copy.invitePending : copy.inviteInfo}.`;
+  }, [caregiverTab, copy, inviteCode, screen, setup.patientName]);
+  useAutoReadText(caregiverSpeech, `caregiver:${caregiverTab}:${languageId}`);
   useEffect(() => {
     let active = true;
     setSpeechPackProblem(false);
@@ -261,7 +309,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     const storedLanguageId = await getLocalSetting('language-id');
     if (seed.languagePacks.some((pack) => pack.id === storedLanguageId)) {
       setLanguageId(storedLanguageId!);
-      setScreen('login');
+      resetScreen('login');
     }
     const stored = await getLocalSetting('patient-id'); const localPatientId = stored ?? patientId; if (stored) setPatientId(stored);
     const storedProfile = await getLocalSetting('care-profile');
@@ -278,7 +326,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   };
 
   const persistCareProfile = async (profile = setup) => setLocalSetting('care-profile', JSON.stringify(profile));
-  const saveLanguage = async () => { await setLocalSetting('language-id', languageId); await configureSpeechRuntime(languageId); setScreen(languageReturnScreen); };
+  const saveLanguage = async () => { await setLocalSetting('language-id', languageId); await configureSpeechRuntime(languageId); returnToScreen(languageReturnScreen); };
   const startSpeechPackDownload = async (pack: DownloadableSpeechPack) => {
     if (speechPackBusy || Platform.OS === 'web') return;
     setSpeechPackBusy(true);
@@ -298,11 +346,32 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     await saveLanguage();
     if (packToDownload && speechPackStatus !== 'ready') void startSpeechPackDownload(packToDownload);
   };
+  const openVoiceIntent = async (result: VoiceNavigationResponse): Promise<string> => {
+    if (result.intent === 'start_whos_who') { void openActivity(); return `${copy.voiceOpening} Who's Who`; }
+    if (result.intent === 'start_recipe') { setScreen('recipes'); return `${copy.voiceOpening} Recipe`; }
+    if (result.intent === 'start_days_plan') { setScreen('daysPlan'); return `${copy.voiceOpening} Day's Plan`; }
+    if (result.intent === 'start_skills') { setScreen('skills-home'); return `${copy.voiceOpening} Learn Together`; }
+    if (result.intent === 'go_home') {
+      if (screen === 'recipes') setRecipeBackRequest((request) => request + 1);
+      else voiceBackRef.current();
+      return languageId === 'hindi' ? 'वापस जा रहे हैं' : languageId === 'bengali' ? 'ফিরে যাচ্ছি' : 'Going back';
+    }
+    return copy.voiceProblem;
+  };
+  const openVoiceTranscript = async (transcript: string): Promise<string> => {
+    const languageCode = speechLanguageCodeFromAppId(languageId) ?? 'en';
+    return openVoiceIntent(matchVoiceIntent(transcript, voiceCommandsFor(languageCode), 0.62));
+  };
   const openVoiceSelectedGame = async (audioUri: string): Promise<string> => {
     const pack = selectedSpeechPack;
-    const languageCode = speechLanguageCodeFromAppId(languageId);
+    const languageCode = speechLanguageCodeFromAppId(languageId) ?? 'en';
     const directory = pack ? languagePackDirectory(pack.languageCode) : null;
-    if (!pack || !languageCode || !directory || speechPackStatus !== 'ready') return copy.voiceProblem;
+    if ((!pack || !directory || speechPackStatus !== 'ready') && isVoiceNavigationConfigured) {
+      const result = await resolveVoiceNavigation({ clientThreadId: `saathi-${patientId}`, clientMessageId: `voice-${Date.now()}`, patientId, languageCode, audioUri });
+      const resolved = result.intent === 'unknown' && result.transcript ? matchVoiceIntent(result.transcript, voiceCommandsFor(languageCode), 0.62) : result;
+      return openVoiceIntent(resolved);
+    }
+    if (!pack || !directory || speechPackStatus !== 'ready') return copy.voiceProblem;
     const manifest: SpeechPackManifest = {
       schemaVersion: 1,
       id: `saathi-${languageCode}-voice-v1`,
@@ -317,11 +386,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     };
     const nativeSttDirectory = `${decodeURIComponent(directory.replace(/^file:\/\//, ''))}models/stt`;
     const result = await resolveOfflineVoiceNavigation(audioUri, nativeSttDirectory, manifest);
-    if (result.intent === 'start_whos_who') { void openActivity(); return `${copy.voiceOpening} Who's Who`; }
-    if (result.intent === 'start_recipe') { setScreen('recipes'); return `${copy.voiceOpening} Recipe`; }
-    if (result.intent === 'start_days_plan') { setScreen('daysPlan'); return `${copy.voiceOpening} Day's Plan`; }
-    if (result.intent === 'start_skills') { setScreen('skills-home'); return `${copy.voiceOpening} Learn Together`; }
-    return copy.voiceProblem;
+    return openVoiceIntent(result);
   };
   const openLanguageSettings = (returnScreen: Screen) => { setLanguageReturnScreen(returnScreen); setNotice(''); setScreen('language'); };
 
@@ -336,18 +401,18 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     setBusy(true); setNotice('');
     try {
       setNotice('Signed in.');
-      setScreen(loginRole === 'patient' ? 'patient' : 'dashboard');
+      resetScreen(loginRole === 'patient' ? 'patient' : 'dashboard');
     } finally { setBusy(false); }
   };
 
   const saveMemory = async () => {
     if (!editor.name.trim() || !editor.relationship.trim()) { setNotice(copy.requiredNotice); return; }
-    await saveWhosWhoItem(patientId, editor, editor.id); await refresh(); setNotice(editor.id ? 'Memory changes saved on this device.' : copy.addedNotice); setScreen('manager');
+    await saveWhosWhoItem(patientId, editor, editor.id); await refresh(); setNotice(editor.id ? 'Memory changes saved on this device.' : copy.addedNotice); returnToScreen('manager');
   };
   const selectPhoto = async () => { try { const uri = await pickAndPersistPhoto(editor.id ?? `draft-${Date.now()}`); if (uri) setEditor((value) => ({ ...value, photoUri: uri })); } catch { setNotice('The photo could not be saved. Please try again.'); } };
   const openEditor = (item?: WhosWhoItem) => { setNotice(''); setEditor(item ? { id: item.id, name: item.name, relationship: item.relationship, personalNote: item.personalNote, photoUri: item.photoUri, nameAudioUri: item.nameAudioUri, noteAudioUri: item.noteAudioUri, learningOnly: item.learningOnly } : emptyEditor()); setScreen('editor'); };
   const archive = async () => { if (!archiveCandidate) return; await archiveWhosWhoItem(archiveCandidate.id); setArchiveCandidate(null); await refresh(); setNotice('This memory is now hidden from patient activities.'); };
-  const saveDaysPlan = async (nextItems: DaysPlanItem[]) => { setDaysPlanItems(await saveDaysPlanItems(patientId, nextItems)); setNotice('Today’s plan is saved on this device.'); setScreen('dashboard'); };
+  const saveDaysPlan = async (nextItems: DaysPlanItem[]) => { setDaysPlanItems(await saveDaysPlanItems(patientId, nextItems)); setNotice('Today’s plan is saved on this device.'); returnToScreen('dashboard'); };
   const beginDaysPlan = async (phase: 'morning' | 'evening') => { const started = await startDaysPlanSession(patientId, phase, companionPresent); setDaysPlanController(await readControllerState(patientId, 'days_plan')); setDaysPlanSession(started); await persistGameEvent(started.id, { type: 'prompt_shown', itemId: daysPlanItems[0]?.id ?? `${phase}-plan`, at: Date.now() }); };
   const recordDaysPlanEvent = async (event: GameEvent) => { if (daysPlanSession) await persistGameEvent(daysPlanSession.id, event); };
   const finishDaysPlan = async () => { if (daysPlanSession) await finishDaysPlanSession(daysPlanSession); setDaysPlanSession(null); };
@@ -382,13 +447,13 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     if (!activitySession || !activeSkill) return;
     const startedAt = Date.now();
     await persistEngagementEvent(activitySession.id, { type: 'activity_started', itemId: activeSkill.id, at: startedAt });
-    setSkillStartedAt(startedAt); setScreen('skill-active');
+    setSkillStartedAt(startedAt); replaceScreen('skill-active');
   };
   const markSkillComplete = async () => {
     if (!activitySession || !activeSkill || !skillStartedAt) return;
     const durationMs = Math.max(0, Date.now() - skillStartedAt);
     await persistEngagementEvent(activitySession.id, { type: 'activity_completed', itemId: activeSkill.id, durationMs, at: Date.now() });
-    setSkillDurationMs(durationMs); setScreen('skill-complete');
+    setSkillDurationMs(durationMs); replaceScreen('skill-complete');
   };
   const captureCompletionPhoto = async () => {
     if (!activitySession || !activeSkill) return;
@@ -402,11 +467,11 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const finishSkillSession = async (destination: 'patient' | 'skills-home') => {
     if (activitySession && activeSkill) await completeSkillTransmissionSession(activitySession, skillDurationMs, completionPhotoUri);
     await refresh();
-    setActivitySession(null); setSkillStartedAt(null); setSkillDurationMs(0); setCompletionPhotoUri(null); setActiveSkillId(null); setNotice(''); setScreen(destination);
+    setActivitySession(null); setSkillStartedAt(null); setSkillDurationMs(0); setCompletionPhotoUri(null); setActiveSkillId(null); setNotice(''); returnToScreen(destination);
   };
-  const leaveSkillSession = async () => {
+  const leaveSkillSession = async (destination: 'patient' | 'skills-home' = 'patient') => {
     if (activitySession) await interruptSkillTransmissionSession(activitySession);
-    setActivitySession(null); setSkillStartedAt(null); setSkillDurationMs(0); setCompletionPhotoUri(null); setActiveSkillId(null); setNotice(''); setScreen('patient');
+    setActivitySession(null); setSkillStartedAt(null); setSkillDurationMs(0); setCompletionPhotoUri(null); setActiveSkillId(null); setNotice(''); returnToScreen(destination);
   };
 
   const openActivity = async () => {
@@ -419,7 +484,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     setCompletedPromptKeys([]); setPendingRecallMode('photo-to-name'); setActiveItemId(next.id); setAnswerState('idle'); setHadWrong(false); setUsedHelp(false); setHintLevel(0); setAttempts(0);
     if (!next.learnedAt) setScreen('learning'); else await beginRecall(next, 'photo-to-name');
   };
-  const beginRecall = async (item: WhosWhoItem, requestedMode?: RecallMode, forceNewSession = false) => {
+  const beginRecall = async (item: WhosWhoItem, requestedMode?: RecallMode, forceNewSession = false, replaceCurrent = false) => {
     // A practice round is one session. This gives the controller a meaningful
     // batch of mixed prompts instead of treating each card as a full session.
     const started = forceNewSession ? await startWhosWhoSession(patientId, item.id) : session ?? await startWhosWhoSession(patientId, item.id);
@@ -428,9 +493,9 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     // relationship/personal-note prompts without changing the per-item schedule.
     const nextMode = requestedMode ?? (item.reviewStep < 0 ? 'photo-to-name' : item.reviewStep % 3 === 0 ? 'name-to-photo' : item.reviewStep % 3 === 1 ? 'clue-to-photo' : 'photo-to-name');
     if (!session || forceNewSession) setControllerState(await readControllerState(patientId, 'whos_who'));
-    setSession(started); setMode(nextMode); setAnswerState('idle'); setHintLevel(0); setScreen('recall');
+    setSession(started); setMode(nextMode); setAnswerState('idle'); setHintLevel(0); (replaceCurrent ? replaceScreen : setScreen)('recall');
   };
-  const practice = async () => { if (!activeItem) return; await markLearningExposure(activeItem.id); await refresh(); await beginRecall(activeItem, pendingRecallMode); };
+  const practice = async () => { if (!activeItem) return; await markLearningExposure(activeItem.id); await refresh(); await beginRecall(activeItem, pendingRecallMode, false, true); };
   const replay = async () => { if (activeItem && session) await persistGameEvent(session.id, { type: 'audio_replayed', itemId: activeItem.id, at: Date.now() }); setUsedHelp(true); };
   const showHint = useCallback(async () => {
     if (!activeItem || !session || hintLevel >= 4) return;
@@ -469,31 +534,39 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
       // immediately, while still keeping the existing review fields untouched.
       const nextRoundPrompts = (await listWhosWhoItems()).filter((item) => !item.learningOnly).flatMap((item) => recallModes.map((recallMode) => ({ item, recallMode })));
       const nextRoundPrompt = nextRoundPrompts.find(({ item, recallMode }) => item.id !== activeItem.id && recallMode !== mode) ?? nextRoundPrompts.find(({ item }) => item.id !== activeItem.id) ?? nextRoundPrompts[0];
-      if (!nextRoundPrompt) { setScreen('patient'); return; }
+      if (!nextRoundPrompt) { returnToScreen('patient'); return; }
       setCompletedPromptKeys([]); setActiveItemId(nextRoundPrompt.item.id); setPendingRecallMode(nextRoundPrompt.recallMode); setAnswerState('idle'); setHadWrong(false); setUsedHelp(false); setHintLevel(0); setAttempts(0);
-      if (!nextRoundPrompt.item.learnedAt) setScreen('learning'); else await beginRecall(nextRoundPrompt.item, nextRoundPrompt.recallMode, true);
+      if (!nextRoundPrompt.item.learnedAt) replaceScreen('learning'); else await beginRecall(nextRoundPrompt.item, nextRoundPrompt.recallMode, true, true);
       return;
     }
     setActiveItemId(nextPrompt.item.id); setPendingRecallMode(nextPrompt.recallMode); setAnswerState('idle'); setHadWrong(false); setUsedHelp(false); setHintLevel(0); setAttempts(0);
-    if (!nextPrompt.item.learnedAt) setScreen('learning'); else await beginRecall(nextPrompt.item, nextPrompt.recallMode);
+    if (!nextPrompt.item.learnedAt) replaceScreen('learning'); else await beginRecall(nextPrompt.item, nextPrompt.recallMode, false, true);
   };
-  const leaveActivity = async () => { if (session) await abandonWhosWhoSession(session); setSession(null); setAnswerState('idle'); setScreen('patient'); await refresh(); };
+  const leaveActivity = async () => { if (session) await abandonWhosWhoSession(session); setSession(null); setAnswerState('idle'); returnToScreen('patient'); await refresh(); };
   const goBack = useCallback(() => {
     if (screen === 'recall' || screen === 'learning') { void leaveActivity(); return true; }
-    if (screen === 'skill-invitation' || screen === 'skill-active') { void leaveSkillSession(); return true; }
-    if (screen === 'skill-complete') { void finishSkillSession('patient'); return true; }
-    const destinations: Partial<Record<Screen, Screen>> = { onboarding: 'login', manager: 'dashboard', editor: 'manager', daysPlanEditor: 'dashboard', daysPlan: 'patient', waiting: 'patient', metrics: 'dashboard', routineManager: 'dashboard', 'skills-manager': 'dashboard', 'skills-home': 'patient' };
-    const destination = destinations[screen];
-    if (!destination) { showExitPrompt(); return true; }
-    setArchiveCandidate(null); setNotice(''); setScreen(destination);
+    if (screen === 'skill-invitation' || screen === 'skill-active') { void leaveSkillSession('skills-home'); return true; }
+    if (screen === 'skill-complete') { void finishSkillSession('skills-home'); return true; }
+    if (screen === 'daysPlan') {
+      void (async () => { await abandonDaysPlan(); returnToScreen('patient'); })();
+      return true;
+    }
+    if (screenStack.length <= 1) { showExitPrompt(); return true; }
+    setArchiveCandidate(null); setNotice('');
+    setScreenStack((current) => current.length > 1 ? current.slice(0, -1) : current);
     return true;
-  }, [screen, session, activeItem, activitySession, activeSkill, skillDurationMs, completionPhotoUri]);
+  }, [screen, screenStack.length, session, activeItem, activitySession, activeSkill, skillDurationMs, completionPhotoUri, daysPlanSession, returnToScreen, showExitPrompt]);
+  voiceBackRef.current = goBack;
   useEffect(() => {
+    if (screen === 'recipes') return undefined;
     const listener = BackHandler.addEventListener('hardwareBackPress', goBack);
     return () => listener.remove();
-  }, [goBack]);
+  }, [goBack, screen]);
   const handleMemberTabChange = useCallback((title: string) => onDashboardChange('patient', title), [onDashboardChange]);
   const currentHint = activeItem ? hintMessage(activeItem, hintLevel) : null;
+  const voiceLanguageCode = speechLanguageCodeFromAppId(languageId) ?? 'en';
+  const voiceAvailable = ['en', 'hi', 'bn'].includes(voiceLanguageCode) && (Platform.OS === 'web' || isVoiceNavigationConfigured || speechPackStatus === 'ready');
+  const voiceLauncher = voiceAvailable ? <VoiceGameLauncher languageCode={voiceLanguageCode} copy={{ ask: copy.voiceAsk, example: copy.voiceExample, start: copy.voiceStart, listening: copy.voiceListening, stop: copy.voiceStop, processing: copy.voiceProcessing, permission: copy.voicePermission, problem: copy.voiceProblem, close: copy.voiceClose }} onAudio={openVoiceSelectedGame} onTranscript={openVoiceTranscript} /> : undefined;
   if (!ready) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>{copy.preparingLibrary}</Text></View></SafeAreaView>;
   if (screen === 'metrics') return <Layout><Header copy={copy} title={copy.practiceInsights} eyebrow={copy.dashboardTitle} onBack={goBack} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
   if (screen === 'language') return (
@@ -551,7 +624,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
         <AppMark />
         <Text style={styles.appName}>Saathi</Text>
       </View>
-      <Header copy={copy} title={authMode === 'signIn' ? copy.signInTitle : copy.createAccountTitle} onBack={goBack} />
+      <Header copy={copy} title={authMode === 'signIn' ? copy.signInTitle : copy.createAccountTitle} />
       <View style={styles.toggleContainer}>
         <Pressable onPress={() => setLoginRole('patient')} style={[styles.toggleOption, loginRole === 'patient' && styles.toggleOptionActive]} accessibilityRole="button">
           <Text style={[styles.toggleText, loginRole === 'patient' && styles.toggleTextActive]}>{copy.memberRole}</Text>
@@ -586,7 +659,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     {caregiverTab === 'settings' ? <><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.assignedMember}</Text><Text style={styles.body}>{copy.assignedFor}</Text><Text style={styles.settingsValue}>{setup.patientName || copy.noMemberAssigned}</Text></View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.inviteId}</Text><Text style={styles.body}>{inviteCode === '—' ? copy.invitePending : copy.inviteInfo}</Text><Text selectable style={[styles.inviteId, inviteCode === '—' && styles.inviteIdUnavailable]}>{inviteCode}</Text></View><ActionButton label={copy.changeLanguage} onPress={() => openLanguageSettings('dashboard')} variant="secondary" /><ActionButton label={copy.dailyRoutineSettings} onPress={() => { setNotice(''); setScreen('routineManager'); }} variant="secondary" /><ActionButton label={copy.signOut} onPress={() => { setNotice(''); setScreen('login'); }} variant="danger" /></> : null}
   </Layout>;
   if (screen === 'daysPlanEditor') return <Layout><Header title="Prepare today’s plan" eyebrow={copy.dashboardTitle} onBack={goBack} /><DaysPlanEditor items={daysPlanItems} onSave={saveDaysPlan} onCancel={() => setScreen('dashboard')} languageId={languageId} /></Layout>;
-  if (screen === 'daysPlan') return <Layout patient><Header title="Today’s plan" eyebrow="Saathi" onBack={goBack} /><DaysPlanActivity items={daysPlanItems} patientName={patientDisplayName} controllerState={daysPlanController} onExit={() => setScreen('patient')} onPhaseStart={beginDaysPlan} onEvent={recordDaysPlanEvent} onComplete={finishDaysPlan} onAbandon={abandonDaysPlan} languageId={languageId} /></Layout>;
+  if (screen === 'daysPlan') return <Layout patient floating={voiceLauncher}><Header title="Today’s plan" eyebrow="Saathi" onBack={goBack} /><DaysPlanActivity items={daysPlanItems} patientName={patientDisplayName} controllerState={daysPlanController} onExit={() => setScreen('patient')} onPhaseStart={beginDaysPlan} onEvent={recordDaysPlanEvent} onComplete={finishDaysPlan} onAbandon={abandonDaysPlan} languageId={languageId} /></Layout>;
   if (screen === 'skills-manager') return <Layout><Header title={copy.skillTransmissionTitle} eyebrow={copy.dashboardTitle} onBack={goBack} /><Text style={styles.body}>{copy.skillsManagerHint}</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.stack}>{skills.map((item) => <SkillManagerCard key={item.id} item={item} title={skillTitle(item)} prompt={skillPrompt(item)} available={isPlayableSkill(item.catalogKey)} labels={{ voicePrompt: copy.voicePrompt, enable: copy.enableSkill, disable: copy.disableSkill, recordToEnable: copy.recordToEnable, hearAgain: copy.hearAgain, interactionComingSoon: copy.interactionComingSoon, audio: audioCaptureLabels }} onAudioCaptured={(uri) => captureSkillPrompt(item, uri)} onToggle={() => toggleSkill(item)} onProblem={setNotice} />)}</View><View style={styles.sharedMoments}><Text style={styles.overline}>{copy.sharedMoments}</Text>{skillCompletions.some((entry) => entry.photoUri) ? <View style={styles.momentGrid}>{skillCompletions.filter((entry) => entry.photoUri).map((entry) => { const item = skills.find((skill) => skill.id === entry.itemId); return <View key={entry.id} style={styles.momentCard}><Image source={{ uri: entry.photoUri ?? undefined }} accessibilityLabel={item ? skillTitle(item) : copy.sharedMoments} style={styles.momentPhoto} /><Text style={styles.momentTitle}>{item ? skillTitle(item) : copy.sharedMoments}</Text><Text style={styles.momentDate}>{`${copy.sharedOn} ${new Date(entry.completedAt).toLocaleDateString()}`}</Text></View>; })}</View> : <Text style={styles.body}>{copy.noSharedMoments}</Text>}</View><ActionButton label={copy.dashboardTitle} onPress={() => setScreen('dashboard')} variant="quiet" /></Layout>;
   if (screen === 'skills-home') return <Layout patient><Header title={copy.chooseSkill} eyebrow={copy.skillTransmissionTitle} onBack={goBack} /><View style={styles.stack}>{skills.filter((item) => item.enabled && item.promptAudioUri && isPlayableSkill(item.catalogKey)).map((item) => <PatientSkillCard key={item.id} item={item} title={skillTitle(item)} prompt={skillPrompt(item)} onPress={() => { void openSkill(item); }} />)}</View><View style={styles.sharedMoments}><Text style={styles.overline}>{copy.sharedMoments}</Text>{skillCompletions.some((entry) => entry.photoUri) ? <View style={styles.momentGrid}>{skillCompletions.filter((entry) => entry.photoUri).map((entry) => { const item = skills.find((skill) => skill.id === entry.itemId); return <View key={entry.id} style={styles.momentCard}><Image source={{ uri: entry.photoUri ?? undefined }} accessibilityLabel={item ? skillTitle(item) : copy.sharedMoments} style={styles.momentPhoto} /><Text style={styles.momentTitle}>{item ? skillTitle(item) : copy.sharedMoments}</Text><Text style={styles.momentDate}>{`${copy.sharedOn} ${new Date(entry.completedAt).toLocaleDateString()}`}</Text></View>; })}</View> : <Text style={styles.body}>{copy.noSharedMoments}</Text>}</View><ActionButton label={copy.home} onPress={() => setScreen('patient')} variant="quiet" /></Layout>;
   if (screen === 'skill-invitation' && activeSkill) return <Layout patient><Header copy={copy} title={copy.skillInvitation} eyebrow={copy.skillTransmissionTitle} onBack={goBack} /><View style={styles.skillFrame}><SkillIllustration skill={activeSkill.catalogKey} label={skillTitle(activeSkill)} size={250} /><Text style={styles.frameName}>{skillTitle(activeSkill)}</Text><Text style={styles.note}>{skillPrompt(activeSkill)}</Text></View><AudioReplay uri={activeSkill.promptAudioUri} label={copy.hearAgain} onReplay={replaySkillPrompt} /><ActionButton label={copy.letsBegin} onPress={() => { void beginSkillActivity(); }} /><ActionButton label={copy.home} onPress={() => { void leaveSkillSession(); }} variant="quiet" /></Layout>;
@@ -599,24 +672,38 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   if (screen === 'waiting') return <Layout patient backLabel={copy.back} onBack={goBack}><Header copy={copy} title={copy.waitingTitle} eyebrow={copy.whosWhoTitle} onBack={goBack} /><View style={styles.waiting}><Text style={styles.panelTitle}>{copy.waitingTitle}</Text><Text style={styles.body}>{copy.waitingHint}</Text>{waitingUntil ? <Text style={styles.relationship}>{copy.nextReview}: {new Date(waitingUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text> : null}</View><ActionButton label={copy.returnHome} onPress={() => { setWaitingUntil(null); setScreen('patient'); }} /></Layout>;
   const playableMemories = items.filter((item) => !item.learningOnly).length;
   const enabledSkills = skills.filter((item) => item.enabled && item.promptAudioUri && isPlayableSkill(item.catalogKey));
-  if (screen === 'recipes') return <RecipeGame patientId={patientId} language={languageId} onHome={() => setScreen('patient')} />;
-  if (screen === 'patient') return <MemberDashboard tab={memberTab} setTab={setMemberTab} languageId={languageId} copy={copy} routine={routine} playableMemories={playableMemories} onOpenActivity={() => { void openActivity(); }} onOpenRecipes={() => setScreen('recipes')} onChangeLanguage={() => openLanguageSettings('patient')} onSignOut={() => { setNotice(''); setScreen('login'); }} onOpenDaysPlan={() => setScreen('daysPlan')} onOpenSkills={() => setScreen('skills-home')} skillsAvailable={enabledSkills.length > 0} notice={notice} onTabChange={handleMemberTabChange} speechProgressCard={<SpeechPackProgress pack={selectedSpeechPack} status={speechPackStatus} busy={speechPackBusy} problem={speechPackProblem} progress={speechPackProgress} copy={copy} />} voiceLauncher={selectedSpeechPack && speechPackStatus === 'ready' ? <VoiceGameLauncher languageCode={speechLanguageCodeFromAppId(languageId) ?? 'en'} copy={{ ask: copy.voiceAsk, example: copy.voiceExample, start: copy.voiceStart, listening: copy.voiceListening, stop: copy.voiceStop, processing: copy.voiceProcessing, permission: copy.voicePermission, problem: copy.voiceProblem, close: copy.voiceClose }} onAudio={openVoiceSelectedGame} /> : undefined} />;
+  if (screen === 'recipes') return <RecipeGame patientId={patientId} language={languageId} onHome={() => returnToScreen('patient')} voiceLauncher={voiceLauncher} backRequest={recipeBackRequest} />;
+  if (screen === 'patient') {
+    return <MemberDashboard tab={memberTab} setTab={setMemberTab} languageId={languageId} copy={copy} routine={routine} playableMemories={playableMemories} onOpenActivity={() => { void openActivity(); }} onOpenRecipes={() => setScreen('recipes')} onChangeLanguage={() => openLanguageSettings('patient')} onSignOut={() => { setNotice(''); setScreen('login'); }} onOpenDaysPlan={() => setScreen('daysPlan')} onOpenSkills={() => setScreen('skills-home')} skillsAvailable={enabledSkills.length > 0} notice={notice} onTabChange={handleMemberTabChange} speechProgressCard={<SpeechPackProgress pack={selectedSpeechPack} status={speechPackStatus} busy={speechPackBusy} problem={speechPackProblem} progress={speechPackProgress} copy={copy} />} voiceLauncher={voiceLauncher} />;
+  }
   return null;
 }
 
-export default function SaathiWorkflow() {
+function AutoReadToggle() {
+  const { enabled, setEnabled, speak, languageCode } = useSpeechGuide();
+  const copy = languageCode === 'hi'
+    ? { on: 'ऑटो सुनना चालू', off: 'ऑटो सुनना बंद', enabled: 'हर पेज अपने आप पढ़ा जाएगा।', visibleOn: 'ऑटो', visibleOff: 'सुनें' }
+    : languageCode === 'bn'
+      ? { on: 'অটো শোনা চালু', off: 'অটো শোনা বন্ধ', enabled: 'প্রতিটি পৃষ্ঠা স্বয়ংক্রিয়ভাবে পড়া হবে।', visibleOn: 'অটো', visibleOff: 'শুনুন' }
+      : { on: 'Auto-read on', off: 'Auto-read off', enabled: 'Every page will now be read aloud.', visibleOn: 'Auto', visibleOff: 'Read' };
+  const label = enabled ? copy.on : copy.off;
+  return <Pressable accessibilityRole="switch" accessibilityState={{ checked: enabled }} accessibilityLabel={label} onPress={() => { touchFeedback(); const next = !enabled; setEnabled(next); if (next) void speak(copy.enabled); else void stopSpeaking(); }} style={({ pressed }) => [styles.autoReadToggle, enabled && styles.autoReadToggleActive, pressed && styles.pressed]}><Text accessible={false} style={styles.autoReadIcon}>{enabled ? '🔊' : '🔈'}</Text><Text style={[styles.autoReadText, enabled && styles.autoReadTextActive]}>{enabled ? copy.visibleOn : copy.visibleOff}</Text></Pressable>;
+}
+
+function SaathiWorkflowShell() {
   const [exitPromptVisible, setExitPromptVisible] = useState(false);
   const [roleTarget, setRoleTarget] = useState<DashboardScreen | null>(null);
   const [activeDashboard, setActiveDashboard] = useState<DashboardScreen>('dashboard');
   const [showRoleSwitch, setShowRoleSwitch] = useState(false);
-  const [dashboardTitle, setDashboardTitle] = useState('Dashboard');
+  const [dashboardTitle, setDashboardTitle] = useState('Games');
+  const { speakAction } = useSpeechGuide();
   const handleDashboardChange = useCallback((screen: DashboardScreen | null, title?: string) => {
     if (screen) { setActiveDashboard(screen); setDashboardTitle(title ?? 'Dashboard'); setShowRoleSwitch(true); }
     else setShowRoleSwitch(false);
   }, []);
   return <ExitPromptContext.Provider value={{ showExitPrompt: () => setExitPromptVisible(true) }}>
     <View style={styles.appRoot}>
-      {showRoleSwitch ? <SafeAreaView style={styles.dashboardHeaderSafe}><View style={styles.dashboardBar}><Text style={styles.dashboardBarTitle}>{dashboardTitle}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Switch to ${activeDashboard === 'patient' ? 'Caregiver' : 'Member'} dashboard`} onPress={() => setRoleTarget(activeDashboard === 'patient' ? 'dashboard' : 'patient')} style={({ pressed }) => [styles.dashboardRoleSwitch, pressed && styles.pressed]}><Text style={styles.roleSwitchText}>{activeDashboard === 'patient' ? 'Caregiver' : 'Member'}</Text></Pressable></View></SafeAreaView> : null}
+      {showRoleSwitch ? <SafeAreaView style={styles.dashboardHeaderSafe}><View style={styles.dashboardBar}><Text style={styles.dashboardBarTitle}>{dashboardTitle}</Text><View style={styles.dashboardTools}><AutoReadToggle /><Pressable accessibilityRole="button" accessibilityLabel={`Switch to ${activeDashboard === 'patient' ? 'Caregiver' : 'Member'} dashboard`} onPress={() => { const target = activeDashboard === 'patient' ? 'Caregiver' : 'Member'; speakAction(target); setRoleTarget(activeDashboard === 'patient' ? 'dashboard' : 'patient'); }} style={({ pressed }) => [styles.dashboardRoleSwitch, pressed && styles.pressed]}><Text style={styles.roleSwitchText}>{activeDashboard === 'patient' ? 'Caregiver' : 'Member'}</Text></Pressable></View></View></SafeAreaView> : null}
       <SaathiWorkflowContent roleTarget={roleTarget} onRoleTargetHandled={() => setRoleTarget(null)} onDashboardChange={handleDashboardChange} />
     </View>
     <Modal transparent visible={exitPromptVisible} animationType="fade" onRequestClose={() => setExitPromptVisible(false)}>
@@ -633,6 +720,10 @@ export default function SaathiWorkflow() {
       </View>
     </Modal>
   </ExitPromptContext.Provider>;
+}
+
+export default function SaathiWorkflow() {
+  return <SpeechGuideProvider><SaathiWorkflowShell /></SpeechGuideProvider>;
 }
 
 const styles = StyleSheet.create({
@@ -704,6 +795,12 @@ const styles = StyleSheet.create({
   dashboardHeaderSafe: { backgroundColor: theme.colors.canvas },
   dashboardBar: { minHeight: 64, paddingHorizontal: theme.spacing.page, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: theme.colors.border, backgroundColor: theme.colors.canvas },
   dashboardBarTitle: { color: theme.colors.ink, fontSize: 20, fontWeight: '800' },
+  dashboardTools: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  autoReadToggle: { minHeight: 44, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.white },
+  autoReadToggleActive: { backgroundColor: theme.colors.leafSoft, borderColor: theme.colors.leaf },
+  autoReadIcon: { fontSize: 16 },
+  autoReadText: { color: theme.colors.mutedInk, fontSize: 14, fontWeight: '800' },
+  autoReadTextActive: { color: theme.colors.leaf },
   dashboardRoleSwitch: { minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, borderWidth: 1, borderColor: theme.colors.leaf, backgroundColor: theme.colors.white },
   roleSwitchText: { color: theme.colors.leaf, fontSize: 15, fontWeight: '800' },
   exitScrim: { flex: 1, justifyContent: 'center', padding: theme.spacing.page, backgroundColor: 'rgba(36, 49, 41, 0.48)' },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { touchFeedback } from '../lib/haptics';
 import { speakText, stopSpeaking } from '../speech/runtime';
@@ -36,30 +36,7 @@ export function ListenButton({ text, languageCode = 'en', label = 'Listen', stop
   );
 }
 
-export function PageListenCard({ title = 'Listen to this page', description = 'Hear the page once. You can stop at any time.', listenLabel = 'Listen', stopLabel = 'Stop', text, languageCode = 'en' }: { title?: string; description?: string; listenLabel?: string; stopLabel?: string; text: string; languageCode?: string }) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.copy}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.description}>{description}</Text>
-      </View>
-      <ListenButton text={text} languageCode={languageCode} label={listenLabel} stopLabel={stopLabel} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  card: {
-    gap: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.leaf,
-    borderRadius: theme.radius.control,
-    backgroundColor: theme.colors.leafSoft,
-  },
-  copy: { gap: 4 },
-  title: { color: theme.colors.ink, fontSize: theme.type.patientSmall, fontWeight: '800' },
-  description: { color: theme.colors.mutedInk, fontSize: theme.type.guardian, lineHeight: 25 },
   listenButton: {
     minHeight: 64,
     paddingHorizontal: 16,

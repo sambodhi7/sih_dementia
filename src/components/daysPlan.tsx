@@ -10,6 +10,7 @@ import { daysPlanOptionCount } from '../services/adaptive/difficulty';
 import type { ControllerState } from '../services/adaptive/types';
 import { pickAndPersistPhoto } from '../storage/media';
 import { getDaysPlanCopy } from '../data/daysPlanCopy';
+import { useSpeechGuide } from '../speech/guide';
 
 export type { DaysPlanItem } from '../storage/types';
 
@@ -29,6 +30,7 @@ type DaysPlanActivityProps = {
 
 export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onEvent, onComplete, onAbandon, controllerState = null, languageId }: DaysPlanActivityProps) {
   const copy = getDaysPlanCopy(languageId);
+  const { speakAction } = useSpeechGuide();
   const [mode, setMode] = useState<PlanMode>('choose');
   const [selectedMode, setSelectedMode] = useState<Exclude<PlanMode, 'choose'>>('morning');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -103,7 +105,7 @@ export function DaysPlanActivity({ items, patientName, onExit, onPhaseStart, onE
           <Text style={styles.switchLabel}>{copy.demoPhase}</Text>
           <View style={styles.phaseSwitch} accessibilityRole="radiogroup" accessibilityLabel={copy.choosePhase}>
             {(['morning', 'evening'] as const).map((phase) => (
-              <Pressable key={phase} accessibilityRole="radio" accessibilityState={{ selected: selectedMode === phase }} onPress={() => setSelectedMode(phase)} style={[styles.phaseOption, selectedMode === phase && styles.phaseOptionSelected]}>
+              <Pressable key={phase} accessibilityRole="radio" accessibilityState={{ selected: selectedMode === phase }} onPress={() => { const optionLabel = phase === 'morning' ? copy.morning : copy.evening; speakAction(optionLabel); setSelectedMode(phase); }} style={[styles.phaseOption, selectedMode === phase && styles.phaseOptionSelected]}>
                 <Text style={[styles.phaseOptionText, selectedMode === phase && styles.phaseOptionTextSelected]}>{phase === 'morning' ? copy.morning : copy.evening}</Text>
               </Pressable>
             ))}

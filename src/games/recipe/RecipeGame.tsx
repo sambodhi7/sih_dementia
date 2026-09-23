@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { AccessibilityInfo, Animated, BackHandler, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../theme';
 import { touchFeedback } from '../../lib/haptics';
@@ -12,12 +13,15 @@ import { getRecipeCopy } from './copy';
 import { choiceFits, pantry, recipes, remainingIngredients, nextRecipeStep } from './model';
 import type { Ingredient, RecipeId } from './model';
 import { IngredientArt, RecipeArt } from './RecipeArt';
+import { useAutoReadText, useSpeechGuide } from '../../speech/guide';
 
-function Button({ text, onPress, disabled = false, secondary = false }: { text: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} hitSlop={8} pressRetentionOffset={16} onPressIn={() => touchFeedback()} onPress={onPress} style={({pressed}) => [s.button, secondary && s.secondary, (pressed || disabled) && s.pressed]}><Text style={[s.buttonText, secondary && {color: theme.colors.ink}]}>{text}</Text></Pressable>;
+function RecipeAction({ text, onPress, disabled = false, secondary = false }: { text: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
+  const { speakAction } = useSpeechGuide();
+  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} hitSlop={8} pressRetentionOffset={16} onPressIn={() => touchFeedback()} onPress={() => { speakAction(text); onPress(); }} style={({pressed}) => [s.button, secondary && s.secondary, (pressed || disabled) && s.pressed]}><Text style={[s.buttonText, secondary && {color: theme.colors.ink}]}>{text}</Text></Pressable>;
 }
 
-export function RecipeGame({ patientId, language, onHome }: { patientId: string; language: string; onHome: () => void }) {
+export function RecipeGame({ patientId, language, onHome, voiceLauncher, backRequest = 0 }: { patientId: string; language: string; onHome: () => void; voiceLauncher?: ReactNode; backRequest?: number }) {
+  const { enabled: autoReadEnabled, speakAction } = useSpeechGuide();
   const copy = getRecipeCopy(language);
   const [recipe, setRecipe] = useState<RecipeId | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -41,6 +45,8 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
   const itemId = recipe && step ? `recipe:${recipe}:${step.id}` : '';
   const spoken = selected ? `${copy.add}: ${copy.ingredients[selected]}` : done ? copy.thanks : step?.action ? copy.actions[step.action] : copy.next;
   const speechLanguageCode = speechLanguageCodeFromAppId(language) ?? 'en';
+  const selectionSpeech = `${copy.title}. ${copy.choose}. ${copy.invitation}. ${(Object.keys(recipes) as RecipeId[]).map(id => `${copy.names[id]}. ${copy.descriptions[id]}`).join('. ')}`;
+  useAutoReadText(recipe ? '' : selectionSpeech, `recipe-selection:${language}`);
 
   useEffect(() => {
     const motionListener = animation.addListener(({value}) => setProgress(value));
@@ -54,7 +60,7 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
       await speakText(text, { languageCode: speechLanguageCode, rate: .85 });
     } catch { setProblem(copy.audioProblem); }
   };
-  useEffect(() => { if (recipe) void say(spoken); }, [recipe, stepIndex, selected, done]);
+  useEffect(() => { if (recipe && autoReadEnabled) void say(spoken); }, [autoReadEnabled, recipe, stepIndex, selected, done]);
 
   // No event queue in component state: persist before accepting another action.
   const perform = async (work: () => Promise<void>) => {
@@ -70,6 +76,12 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
     session.current = null; onHome();
   }); };
   const leaveRef = useRef(leave); leaveRef.current = leave;
+  const handledBackRequest = useRef(backRequest);
+  useEffect(() => {
+    if (backRequest === handledBackRequest.current) return;
+    handledBackRequest.current = backRequest;
+    leaveRef.current();
+  }, [backRequest]);
   useEffect(() => { const sub = BackHandler.addEventListener('hardwareBackPress', () => { leaveRef.current(); return true; }); return () => sub.remove(); }, []);
   const open = (id: RecipeId) => { void perform(async () => {
     const nextSession = await startWhosWhoSession(patientId, `recipe:${id}`, false, 'recipe');
@@ -138,29 +150,31 @@ export function RecipeGame({ patientId, language, onHome }: { patientId: string;
     assisted.current = true; setHint(true);
     if (step?.choices) await say(step.choices.filter(i => !used.includes(i)).map(i => copy.ingredients[i]).join(', '));
   }); };
-  return <ScrollView ref={scroll} contentContainerStyle={s.page}>
+  return <View style={s.shell}><ScrollView ref={scroll} contentContainerStyle={s.page}>
     <View style={s.intro}><Text style={s.eyebrow}>{copy.title}</Text>
-    {!recipe ? <><Text style={s.title}>{copy.choose}</Text><Text style={s.body}>{copy.invitation}</Text>{(Object.keys(recipes) as RecipeId[]).map(id => <Pressable key={id} accessibilityRole="button" accessibilityLabel={copy.names[id]} disabled={busy} hitSlop={6} pressRetentionOffset={16} onPressIn={() => touchFeedback()} onPress={() => open(id)} style={({pressed}) => [s.card, (pressed || busy) && s.pressed]}><View pointerEvents="none" style={{height: 150}}><RecipeArt recipe={id} ingredients={pantry[id]} spread rolled served /></View><Text pointerEvents="none" style={s.heading}>{copy.names[id]}</Text><Text pointerEvents="none" style={s.body}>{copy.descriptions[id]}</Text></Pressable>)}<Text style={s.body}>{copy.symbolic}</Text></>
+    {!recipe ? <><Text style={s.title}>{copy.choose}</Text><Text style={s.body}>{copy.invitation}</Text>{(Object.keys(recipes) as RecipeId[]).map(id => <Pressable key={id} accessibilityRole="button" accessibilityLabel={copy.names[id]} disabled={busy} hitSlop={6} pressRetentionOffset={16} onPressIn={() => touchFeedback()} onPress={() => { speakAction(copy.names[id]); open(id); }} style={({pressed}) => [s.card, (pressed || busy) && s.pressed]}><View pointerEvents="none" style={{height: 150}}><RecipeArt recipe={id} ingredients={pantry[id]} spread rolled served /></View><Text pointerEvents="none" style={s.heading}>{copy.names[id]}</Text><Text pointerEvents="none" style={s.body}>{copy.descriptions[id]}</Text></Pressable>)}<Text style={s.body}>{copy.symbolic}</Text></>
     : <><Text style={s.title}>{done ? copy.finish : copy.names[recipe]}</Text><Text accessibilityLiveRegion="polite" style={s.heading}>{spoken}</Text>
-      {pending ? <View accessibilityLiveRegion="polite" style={s.familyNote}><Text style={s.heading}>{copy.variant}</Text><Text style={s.body}>{copy.family}</Text><Button text={`${copy.continue}: ${copy.ingredients[pending]}`} onPress={() => { animation.setValue(0); setSelected(pending); setPending(null); assisted.current = true; }} secondary/><Button text={copy.hint} onPress={() => { setPending(null); reveal(); }} secondary/></View> : null}
+      {pending ? <View accessibilityLiveRegion="polite" style={s.familyNote}><Text style={s.heading}>{copy.variant}</Text><Text style={s.body}>{copy.family}</Text><RecipeAction text={`${copy.continue}: ${copy.ingredients[pending]}`} onPress={() => { animation.setValue(0); setSelected(pending); setPending(null); assisted.current = true; }} secondary/><RecipeAction text={copy.hint} onPress={() => { setPending(null); reveal(); }} secondary/></View> : null}
       <View {...pan.panHandlers} accessible={canMove} accessibilityRole={canMove ? 'button' : 'image'} accessibilityLabel={canMove ? spoken : copy.names[recipe]} accessibilityActions={canMove ? [{name: 'activate', label: spoken}] : []} onAccessibilityAction={() => { if (canMove) finishAction(); }} style={s.scene}>
         <Animated.View style={{flex: 1, transform: [{translateX: step?.action === 'roll' ? progress * 24 : 0}, {scale: step?.action === 'serve' ? 1 + progress * .06 : 1}]}}><RecipeArt recipe={recipe} ingredients={used} spread={spread} rolled={rolled || (step?.action === 'roll' && progress > .6)} served={done} progress={progress} stirring={step?.action === 'stir'} /></Animated.View>
         {selected && <Animated.View pointerEvents="none" style={[s.floating, { opacity: animation.interpolate({inputRange:[0,1],outputRange:[1,0]}), transform:[{translateY: animation.interpolate({inputRange:[0,1],outputRange:[0,90]})},{rotate: `${progress*35}deg`}] }]}><IngredientArt ingredient={selected}/></Animated.View>}
         {canMove && !done && <Text pointerEvents="none" style={s.arrow}>↔</Text>}
       </View>
-      {done ? <><Button text={copy.another} onPress={() => {setRecipe(null); setDone(false);}} /><Text style={s.body}>{copy.family}</Text></> : <>
-        {canMove ? <><Text style={s.body}>{copy.gesture}</Text><Button text={selected ? `${copy.add}: ${copy.ingredients[selected]}` : copy.actions[step!.action!]} disabled={busy} onPress={finishAction}/></> : <View style={s.choices}>{remainingIngredients(recipe, used).map(ingredient => <Pressable key={ingredient} accessibilityRole="button" accessibilityLabel={copy.ingredients[ingredient]} disabled={busy} hitSlop={6} pressRetentionOffset={16} onPressIn={() => touchFeedback()} onPress={() => choose(ingredient)} style={({pressed}) => [s.ingredient, hint && step?.choices?.includes(ingredient) && s.highlight, (pressed || busy) && s.pressed]}><View pointerEvents="none" style={{width: 96}}><IngredientArt ingredient={ingredient}/></View><Text pointerEvents="none" style={s.label}>{copy.ingredients[ingredient]}</Text></Pressable>)}</View>}
-        <Button text={copy.again} onPress={replay} disabled={busy} secondary/>
-        {!canMove && <Button text={copy.hint} onPress={reveal} disabled={busy} secondary/>}
+      {done ? <><RecipeAction text={copy.another} onPress={() => {setRecipe(null); setDone(false);}} /><Text style={s.body}>{copy.family}</Text></> : <>
+        {canMove ? <><Text style={s.body}>{copy.gesture}</Text><RecipeAction text={selected ? `${copy.add}: ${copy.ingredients[selected]}` : copy.actions[step!.action!]} disabled={busy} onPress={finishAction}/></> : <View style={s.choices}>{remainingIngredients(recipe, used).map(ingredient => <Pressable key={ingredient} accessibilityRole="button" accessibilityLabel={copy.ingredients[ingredient]} disabled={busy} hitSlop={6} pressRetentionOffset={16} onPressIn={() => touchFeedback()} onPress={() => { speakAction(copy.ingredients[ingredient]); choose(ingredient); }} style={({pressed}) => [s.ingredient, hint && step?.choices?.includes(ingredient) && s.highlight, (pressed || busy) && s.pressed]}><View pointerEvents="none" style={{width: 96}}><IngredientArt ingredient={ingredient}/></View><Text pointerEvents="none" style={s.label}>{copy.ingredients[ingredient]}</Text></Pressable>)}</View>}
+        <RecipeAction text={copy.again} onPress={replay} disabled={busy} secondary/>
+        {!canMove && <RecipeAction text={copy.hint} onPress={reveal} disabled={busy} secondary/>}
       </>}
     </>}
     </View>{busy ? <Text accessibilityLiveRegion="polite" style={s.status}>{copy.saving}</Text> : null}
     {problem ? <Text accessibilityLiveRegion="polite" style={s.problem}>{problem}</Text> : null}
-    <Button text={copy.home} onPress={leave} disabled={busy} secondary/>
-  </ScrollView>;
+    <RecipeAction text={copy.home} onPress={leave} disabled={busy} secondary/>
+  </ScrollView>{voiceLauncher ? <View style={s.voiceLauncher}>{voiceLauncher}</View> : null}</View>;
 }
 const s = StyleSheet.create({
-  page: {padding: theme.spacing.page, paddingTop: 32, paddingBottom: 40, gap: 20, backgroundColor: theme.colors.canvas, flexGrow: 1, width: '100%', maxWidth: 680, alignSelf: 'center'},
+  shell: {flex: 1, backgroundColor: theme.colors.canvas},
+  page: {padding: theme.spacing.page, paddingTop: 32, paddingBottom: 116, gap: 20, backgroundColor: theme.colors.canvas, flexGrow: 1, width: '100%', maxWidth: 680, alignSelf: 'center'},
+  voiceLauncher: {position: 'absolute', right: theme.spacing.page, bottom: 20, zIndex: 2},
   intro: {gap: 20}, eyebrow: {fontSize: 14, color: theme.colors.leaf, fontWeight: '800', letterSpacing: .7}, title: {fontSize: 36, color: theme.colors.ink, fontWeight: '700'}, heading: {fontSize: 26, color: theme.colors.ink, fontWeight: '700'}, body: {fontSize: 22, lineHeight: 31, color: theme.colors.mutedInk},
   card: {padding: 18, borderRadius: theme.radius.media, backgroundColor: theme.colors.white, borderWidth: 1, borderColor: theme.colors.border, gap: 14},
   scene: {height: 260, backgroundColor: theme.colors.surface, borderRadius: theme.radius.media, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.border}, floating: {position: 'absolute', top: 10, left: '30%', width: '40%'}, arrow: {position: 'absolute', bottom: 6, alignSelf: 'center', color: theme.colors.amber, fontSize: 34},

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AudioCapture, AudioReplay } from '../../components/audio';
 import { ActionButton, Notice } from '../../components/ui';
 import { touchFeedback } from '../../lib/haptics';
+import { useSpeechGuide } from '../../speech/guide';
 import type { SkillTransmissionItem } from '../../storage/types';
 import { theme } from '../../theme';
 import { SkillIllustration } from './SkillIllustration';
@@ -40,7 +41,8 @@ export function SkillManagerCard({ item, title, prompt, labels, available, onAud
 }
 
 export function PatientSkillCard({ item, title, prompt, onPress }: { item: SkillTransmissionItem; title: string; prompt: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${prompt}`} onPress={() => { touchFeedback(); onPress(); }} style={({ pressed }) => [styles.patientCard, pressed && styles.pressed]}>
+  const { speakAction } = useSpeechGuide();
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${prompt}`} onPress={() => { touchFeedback(); speakAction(title); onPress(); }} style={({ pressed }) => [styles.patientCard, pressed && styles.pressed]}>
     <SkillIllustration skill={item.catalogKey} label={title} size={142} />
     <View style={styles.patientCopy}><Text style={styles.patientTitle}>{title}</Text><Text style={styles.patientPrompt}>{prompt}</Text></View>
   </Pressable>;

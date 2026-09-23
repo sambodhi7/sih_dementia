@@ -84,6 +84,8 @@ Patient screens use a single-column composition with 24px side gutters, 20px gap
 
 Patient navigation is deliberately shallow: the member dashboard provides Games, Routine, and Settings, while active memory activities retain a persistent localized Games action and Hear again action. Leaving an activity returns directly to Games without a score or performance summary. Caregiver Area is visually separate, always labelled, and protected by PIN or device biometrics. Caregiver Games contains only activity editors, all non-diagnostic support summaries live in Insights, and Settings shows the assigned member and invite identifier. Routine and medication reminders are caregiver-authored on-device data; patient-facing reminders provide calm guidance, never medical advice or confirmation that medication was taken.
 
+All page transitions use one visit-history stack. Android Back, visible Back/Home actions, and voice “back” resolve through the same history and activity-close rules; the leave-app dialog is reserved for a root screen with no earlier page. Activity-internal prompt changes replace the current history entry so Back never reopens a completed or interrupted prompt.
+
 Support 200% system text scaling: cards grow vertically, labels wrap, and controls retain their minimum 64px height. Reserve image aspect ratio and feedback-space geometry so hints, audio replay, and sync changes do not shift controls unexpectedly.
 
 ## Elevation & Depth
@@ -124,7 +126,9 @@ Motion is limited to 150–200ms pressed feedback and the gentle appearance of a
 
 Each patient prompt may play once when its activity state opens. A visible, localized Hear again action is always available. Audio never loops, never auto-advances the task, and never competes with another prompt: starting new audio cleanly stops the previous playback. Audio replay remains assistance telemetry, not patient-visible failure.
 
-Patient page speech comes from stable, ordered utterance IDs in the active language pack, not duplicated screen-handler strings. A visible labelled Listen action is canonical; double-tap and long-press are never the only way to hear content. Voice navigation is limited to an explicit allowlist of reversible navigation, repeat, and stop intents. It never answers a game or confirms a real-world task.
+Patient page speech comes from stable, ordered utterance IDs in the active language pack, not duplicated screen-handler strings. The persistent header auto-read switch owns full-page narration, while compact labelled Listen actions remain available for individual cards and prompts. Double-tap and long-press are never the only way to hear content. Voice navigation is limited to an explicit allowlist of reversible navigation, repeat, and stop intents. It never answers a game or confirms a real-world task.
+
+The dashboard header also provides a persistent, labelled auto-read switch. When enabled, it reads each newly opened tab or activity state once and speaks the label of a patient choice as it is tapped. New speech always stops the previous utterance; turning auto-read off stops immediately. The prototype voice-navigation launcher supports English, Hindi, and Bengali through the available browser, configured service, or downloaded offline recognizer while keeping touch navigation available.
 
 ### Content and data visualization
 
