@@ -2,8 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import { RecipeGame } from './games/recipe/RecipeGame';
 import { getRecipeCopy } from './games/recipe/copy';
-import { ActivityIndicator, BackHandler, Image, Modal, Platform, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import type { GestureResponderEvent } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import type { ControllerState, GameEvent, SessionOutcome } from './services/adaptive/types';
@@ -13,6 +14,7 @@ import { ListenButton } from './components/speech';
 import { VoiceGameLauncher } from './components/VoiceGameLauncher';
 import { LanguagePackDownload } from './components/LanguagePackDownload';
 import { CaregiverMetrics } from './components/CaregiverMetrics';
+import { CaregiverOverview } from './components/CaregiverOverview';
 import { DaysPlanActivity, DaysPlanEditor } from './components/daysPlan';
 import { ActionButton, Field, MemberRow, Notice, Portrait } from './components/ui';
 import { seed } from './data/seed';
@@ -103,11 +105,11 @@ function AppMark({ size = 64 }: { size?: number }) {
   return <Image accessibilityLabel="Saathi" source={appIcon} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 }
 
-function Header({ title, eyebrow, onBack, copy }: { title: string; eyebrow?: string; onBack?: () => void; copy?: any }) {
+function Header({ title, eyebrow, onBack, copy, centered = false }: { title: string; eyebrow?: string; onBack?: () => void; copy?: any; centered?: boolean }) {
   const { speakAction } = useSpeechGuide();
   const backLabel = copy?.back ?? 'Back';
   useAutoReadText([eyebrow, title].filter(Boolean).join('. '), `header:${eyebrow ?? ''}:${title}`);
-  return <View style={styles.header}>{onBack ? <Pressable accessibilityRole="button" accessibilityLabel={backLabel} hitSlop={8} onPress={() => { touchFeedback(); speakAction(backLabel); onBack(); }} style={({ pressed }) => [styles.headerBackButton, pressed && styles.pressed]}><Text style={styles.backText}>{`‹ ${backLabel}`}</Text></Pressable> : null}{eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}<Text style={styles.title}>{title}</Text></View>;
+  return <View style={styles.header}>{onBack ? <Pressable accessibilityRole="button" accessibilityLabel={backLabel} hitSlop={8} onPress={() => { touchFeedback(); speakAction(backLabel); onBack(); }} style={({ pressed }) => [styles.headerBackButton, pressed && styles.pressed]}><Text style={styles.backText}>{`‹ ${backLabel}`}</Text></Pressable> : null}{eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}<Text style={[styles.title, centered && styles.centeredTitle]}>{title}</Text></View>;
 }
 
 function GameCover({ source, label }: { source: number; label: string }) {
@@ -119,7 +121,7 @@ function GameCover({ source, label }: { source: number; label: string }) {
 }
 
 function Layout({ children, patient = false, footer, dashboard = false, floating }: { children: React.ReactNode; patient?: boolean; footer?: React.ReactNode; dashboard?: boolean; floating?: ReactNode; onBack?: () => void; backLabel?: string }) {
-  return <SafeAreaView style={styles.safe}><StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} /><ScrollView contentContainerStyle={[styles.scroll, styles.scrollCompact, dashboard && styles.dashboardScroll, patient && styles.patientScroll, footer ? styles.scrollWithFooter : null]} keyboardShouldPersistTaps="handled">{children}</ScrollView>{floating ? <View style={styles.floatingVoice}>{floating}</View> : null}{footer ? <View style={styles.fixedFooter}>{footer}</View> : null}</SafeAreaView>;
+  return <SafeAreaView edges={dashboard ? ['bottom', 'left', 'right'] : undefined} style={styles.safe}><StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} /><ScrollView contentContainerStyle={[styles.scroll, styles.scrollCompact, dashboard && styles.dashboardScroll, patient && styles.patientScroll, footer ? styles.scrollWithFooter : null]} keyboardShouldPersistTaps="handled">{children}</ScrollView>{floating ? <View style={styles.floatingVoice}>{floating}</View> : null}{footer ? <View style={styles.fixedFooter}>{footer}</View> : null}</SafeAreaView>;
 }
 
 function DashboardBottomNav({ active, onChange, tabs }: { active: string; onChange: (tab: string) => void; tabs: ReadonlyArray<readonly [string, string]> }) {
@@ -228,7 +230,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const [daysPlanController, setDaysPlanController] = useState<ControllerState | null>(null);
   const [companionPresent, setCompanionPresent] = useState(false);
   const [memberTab, setMemberTab] = useState<MemberTab>('home');
-  const [caregiverTab, setCaregiverTab] = useState<CaregiverTab>('games');
+  const [caregiverTab, setCaregiverTab] = useState<CaregiverTab>('insights');
   const [routine, setRoutine] = useState<RoutineItem[]>([]);
   const [routineDraft, setRoutineDraft] = useState({ title: '', detail: '', time: '08:00', kind: 'medication' as RoutineItem['kind'] });
   const [timePickerVisible, setTimePickerVisible] = useState(false);
@@ -242,6 +244,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   useEffect(() => {
     if (!roleTarget) return;
     setNotice('');
+    if (roleTarget === 'dashboard') setCaregiverTab('insights');
     resetScreen(roleTarget);
     onRoleTargetHandled();
   }, [onRoleTargetHandled, resetScreen, roleTarget]);
@@ -401,6 +404,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
     setBusy(true); setNotice('');
     try {
       setNotice('Signed in.');
+      if (loginRole !== 'patient') setCaregiverTab('insights');
       resetScreen(loginRole === 'patient' ? 'patient' : 'dashboard');
     } finally { setBusy(false); }
   };
@@ -568,7 +572,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const voiceAvailable = ['en', 'hi', 'bn'].includes(voiceLanguageCode) && (Platform.OS === 'web' || isVoiceNavigationConfigured || speechPackStatus === 'ready');
   const voiceLauncher = voiceAvailable ? <VoiceGameLauncher languageCode={voiceLanguageCode} copy={{ ask: copy.voiceAsk, example: copy.voiceExample, start: copy.voiceStart, listening: copy.voiceListening, stop: copy.voiceStop, processing: copy.voiceProcessing, permission: copy.voicePermission, problem: copy.voiceProblem, close: copy.voiceClose }} onAudio={openVoiceSelectedGame} onTranscript={openVoiceTranscript} /> : undefined;
   if (!ready) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>{copy.preparingLibrary}</Text></View></SafeAreaView>;
-  if (screen === 'metrics') return <Layout><Header copy={copy} title={copy.practiceInsights} eyebrow={copy.dashboardTitle} onBack={goBack} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
+  if (screen === 'metrics') return <Layout><Header copy={copy} title={copy.practiceInsights} eyebrow={copy.dashboardTitle} onBack={goBack} /><CaregiverOverview patientId={patientId} locale={language.dateFormatter} routine={routine} onManageRoutine={() => setScreen('routineManager')} onOpenMember={() => resetScreen('patient')} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
   if (screen === 'language') return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} />
@@ -624,7 +628,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
         <AppMark />
         <Text style={styles.appName}>Saathi</Text>
       </View>
-      <Header copy={copy} title={authMode === 'signIn' ? copy.signInTitle : copy.createAccountTitle} />
+      <Header copy={copy} title={authMode === 'signIn' ? copy.signInTitle : copy.createAccountTitle} centered />
       <View style={styles.toggleContainer}>
         <Pressable onPress={() => setLoginRole('patient')} style={[styles.toggleOption, loginRole === 'patient' && styles.toggleOptionActive]} accessibilityRole="button">
           <Text style={[styles.toggleText, loginRole === 'patient' && styles.toggleTextActive]}>{copy.memberRole}</Text>
@@ -646,8 +650,8 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
       <ActionButton label={authMode === 'signIn' ? copy.needAccount : copy.alreadyHaveAccount} onPress={() => { setAuthMode(authMode === 'signIn' ? 'signUp' : 'signIn'); setNotice(''); }} variant="quiet" />
     </Layout>
   );
-  if (screen === 'routineManager') return <Layout><Header copy={copy} title="Daily routine and reminders" eyebrow="Caregiver Area" onBack={goBack} /><Text style={styles.body}>Medication reminders are saved and scheduled on this device. Check each medicine name and dose with the prescription before saving.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.stack}>{routine.map((item) => <View key={item.id} style={[styles.routineRow, item.kind === 'medication' && styles.medicationRow]}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail || 'No extra note.'}</Text><Text style={styles.medicationLabel}>{item.kind === 'medication' ? 'Medication alarm' : 'Routine reminder'}</Text></View><ActionButton label="Remove" onPress={async () => { setRoutine(await removeRoutineItem(routine, item.id)); }} variant="quiet" compact /></View>)}</View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>Add a reminder</Text><Field label="Reminder name" value={routineDraft.title} onChangeText={(title) => setRoutineDraft((value) => ({ ...value, title }))} placeholder="For example, morning medicine" /><Field label="Instructions" value={routineDraft.detail} onChangeText={(detail) => setRoutineDraft((value) => ({ ...value, detail }))} placeholder="For example, take after breakfast" multiline /><Text style={styles.fieldLabel}>Reminder time</Text><ActionButton label={`Choose time: ${routineDraft.time}`} onPress={() => setTimePickerVisible(true)} variant="secondary" />{timePickerVisible ? <DateTimePicker value={timeFromValue(routineDraft.time)} mode="time" display="default" onChange={(_event, selectedTime) => { setTimePickerVisible(false); if (selectedTime) setRoutineDraft((value) => ({ ...value, time: timeValue(selectedTime) })); }} /> : null}<ActionButton label={routineDraft.kind === 'medication' ? 'Type: medication' : 'Type: routine'} onPress={() => setRoutineDraft((value) => ({ ...value, kind: value.kind === 'medication' ? 'activity' : 'medication' }))} variant="secondary" /><ActionButton label="Save local reminder" onPress={() => { void addRoutineItem(); }} /></View></Layout>;
-  if (screen === 'dashboard') return <Layout dashboard footer={<DashboardBottomNav active={caregiverTab} onChange={(nextTab) => setCaregiverTab(nextTab as CaregiverTab)} tabs={[['games', copy.gamesTab], ['insights', copy.practiceInsights], ['settings', copy.settingsTab]]} />}>
+  if (screen === 'routineManager') return <Layout><Header copy={copy} title="Daily routine and reminders" eyebrow="Caregiver Area" onBack={goBack} /><Text style={styles.body}>Reminders are saved on this device. Medication alarms are scheduled when this build and notification permissions allow it. Check each medicine name and dose with the prescription before saving.</Text>{notice ? <Notice tone="support">{notice}</Notice> : null}<View style={styles.stack}>{routine.map((item) => <View key={item.id} style={[styles.routineRow, item.kind === 'medication' && styles.medicationRow]}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail || 'No extra note.'}</Text><Text style={styles.medicationLabel}>{item.kind === 'medication' ? 'Medication reminder' : 'Routine reminder'}</Text></View><ActionButton label="Remove" onPress={async () => { setRoutine(await removeRoutineItem(routine, item.id)); }} variant="quiet" compact /></View>)}</View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>Add a reminder</Text><Field label="Reminder name" value={routineDraft.title} onChangeText={(title) => setRoutineDraft((value) => ({ ...value, title }))} placeholder="For example, morning medicine" /><Field label="Instructions" value={routineDraft.detail} onChangeText={(detail) => setRoutineDraft((value) => ({ ...value, detail }))} placeholder="For example, take after breakfast" multiline /><Text style={styles.fieldLabel}>Reminder time</Text><ActionButton label={`Choose time: ${routineDraft.time}`} onPress={() => setTimePickerVisible(true)} variant="secondary" />{timePickerVisible ? <DateTimePicker value={timeFromValue(routineDraft.time)} mode="time" display="default" onChange={(_event, selectedTime) => { setTimePickerVisible(false); if (selectedTime) setRoutineDraft((value) => ({ ...value, time: timeValue(selectedTime) })); }} /> : null}<ActionButton label={routineDraft.kind === 'medication' ? 'Type: medication' : 'Type: routine'} onPress={() => setRoutineDraft((value) => ({ ...value, kind: value.kind === 'medication' ? 'activity' : 'medication' }))} variant="secondary" /><ActionButton label="Save local reminder" onPress={() => { void addRoutineItem(); }} /></View></Layout>;
+  if (screen === 'dashboard') return <Layout dashboard footer={<DashboardBottomNav active={caregiverTab} onChange={(nextTab) => setCaregiverTab(nextTab as CaregiverTab)} tabs={[['insights', copy.practiceInsights], ['games', copy.gamesTab], ['settings', copy.settingsTab]]} />}>
     <SpeechPackProgress pack={selectedSpeechPack} status={speechPackStatus} busy={speechPackBusy} problem={speechPackProblem} progress={speechPackProgress} copy={copy} />
     {caregiverTab === 'games' ? <>
       <View style={styles.caregiverIntro}><Text style={styles.overline}>{copy.careDashboard}</Text><Text style={styles.panelTitle}>{copy.prepareActivities}</Text><Text style={styles.body}>{copy.prepareActivitiesHint}</Text></View>
@@ -655,7 +659,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
       <View style={styles.caregiverGameRow}><View style={styles.caregiverGameCopy}><Text style={styles.overline}>{copy.dailyRoutineLabel}</Text><Text style={styles.caregiverGameTitle}>Day’s Plan</Text><Text style={styles.body}>{copy.prepareMoments}</Text></View><ActionButton label={copy.prepareTodayPlan} onPress={() => setScreen('daysPlanEditor')} variant="secondary" /></View>
       <View style={styles.caregiverGameRow}><View style={styles.caregiverGameCopy}><Text style={styles.overline}>{copy.familySkillsLabel}</Text><Text style={styles.caregiverGameTitle}>{copy.skillTransmissionTitle}</Text><Text style={styles.body}>{skills.filter((item) => item.enabled && isPlayableSkill(item.catalogKey)).length ? `${skills.filter((item) => item.enabled && isPlayableSkill(item.catalogKey)).length} ${copy.activitiesReady}` : copy.noActivities}</Text></View><ActionButton label={copy.manageSkills} onPress={() => { setNotice(''); setScreen('skills-manager'); }} variant="secondary" /></View>
     </> : null}
-    {caregiverTab === 'insights' ? <><Notice>{copy.insightsNotice}</Notice><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></> : null}
+    {caregiverTab === 'insights' ? <><CaregiverOverview patientId={patientId} locale={language.dateFormatter} routine={routine} onManageRoutine={() => setScreen('routineManager')} onOpenMember={() => resetScreen('patient')} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></> : null}
     {caregiverTab === 'settings' ? <><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.assignedMember}</Text><Text style={styles.body}>{copy.assignedFor}</Text><Text style={styles.settingsValue}>{setup.patientName || copy.noMemberAssigned}</Text></View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.inviteId}</Text><Text style={styles.body}>{inviteCode === '—' ? copy.invitePending : copy.inviteInfo}</Text><Text selectable style={[styles.inviteId, inviteCode === '—' && styles.inviteIdUnavailable]}>{inviteCode}</Text></View><ActionButton label={copy.changeLanguage} onPress={() => openLanguageSettings('dashboard')} variant="secondary" /><ActionButton label={copy.dailyRoutineSettings} onPress={() => { setNotice(''); setScreen('routineManager'); }} variant="secondary" /><ActionButton label={copy.signOut} onPress={() => { setNotice(''); setScreen('login'); }} variant="danger" /></> : null}
   </Layout>;
   if (screen === 'daysPlanEditor') return <Layout><Header title="Prepare today’s plan" eyebrow={copy.dashboardTitle} onBack={goBack} /><DaysPlanEditor items={daysPlanItems} onSave={saveDaysPlan} onCancel={() => setScreen('dashboard')} languageId={languageId} /></Layout>;
@@ -703,7 +707,7 @@ function SaathiWorkflowShell() {
   }, []);
   return <ExitPromptContext.Provider value={{ showExitPrompt: () => setExitPromptVisible(true) }}>
     <View style={styles.appRoot}>
-      {showRoleSwitch ? <SafeAreaView style={styles.dashboardHeaderSafe}><View style={styles.dashboardBar}><Text style={styles.dashboardBarTitle}>{dashboardTitle}</Text><View style={styles.dashboardTools}><AutoReadToggle /><Pressable accessibilityRole="button" accessibilityLabel={`Switch to ${activeDashboard === 'patient' ? 'Caregiver' : 'Member'} dashboard`} onPress={() => { const target = activeDashboard === 'patient' ? 'Caregiver' : 'Member'; speakAction(target); setRoleTarget(activeDashboard === 'patient' ? 'dashboard' : 'patient'); }} style={({ pressed }) => [styles.dashboardRoleSwitch, pressed && styles.pressed]}><Text style={styles.roleSwitchText}>{activeDashboard === 'patient' ? 'Caregiver' : 'Member'}</Text></Pressable></View></View></SafeAreaView> : null}
+      {showRoleSwitch ? <SafeAreaView edges={['top', 'left', 'right']} style={styles.dashboardHeaderSafe}><View style={styles.dashboardBar}><Text style={styles.dashboardBarTitle}>{dashboardTitle}</Text><View style={styles.dashboardTools}><AutoReadToggle /><Pressable accessibilityRole="button" accessibilityLabel={`Switch to ${activeDashboard === 'patient' ? 'Caregiver' : 'Member'} dashboard`} onPress={() => { const target = activeDashboard === 'patient' ? 'Caregiver' : 'Member'; speakAction(target); setRoleTarget(activeDashboard === 'patient' ? 'dashboard' : 'patient'); }} style={({ pressed }) => [styles.dashboardRoleSwitch, pressed && styles.pressed]}><Text style={styles.roleSwitchText}>{activeDashboard === 'patient' ? 'Caregiver' : 'Member'}</Text></Pressable></View></View></SafeAreaView> : null}
       <SaathiWorkflowContent roleTarget={roleTarget} onRoleTargetHandled={() => setRoleTarget(null)} onDashboardChange={handleDashboardChange} />
     </View>
     <Modal transparent visible={exitPromptVisible} animationType="fade" onRequestClose={() => setExitPromptVisible(false)}>
@@ -738,6 +742,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.canvas }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }, scroll: { padding: theme.spacing.page, paddingTop: 96, gap: theme.spacing.gap, flexGrow: 1, maxWidth: 760, width: '100%', alignSelf: 'center' }, scrollWithoutBack: { paddingTop: theme.spacing.page }, patientScroll: { paddingBottom: 48 }, stack: { gap: 14 }, header: { gap: 10 }, headerContainer: { gap: 12 }, brand: { flexDirection: 'row', alignItems: 'center', gap: 10 }, leafMark: { alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.leaf, borderWidth: 2, borderColor: theme.colors.focus }, leafBlade: { position: 'absolute', backgroundColor: theme.colors.white, transform: [{ rotate: '-38deg' }] }, leafVein: { position: 'absolute', width: 2, borderRadius: 1, backgroundColor: theme.colors.leaf, transform: [{ rotate: '-38deg' }] }, brandText: { color: theme.colors.leaf, fontSize: theme.type.guardian, fontWeight: '800' }, eyebrow: { color: theme.colors.mutedInk, fontSize: theme.type.meta, fontWeight: '700', letterSpacing: .4 }, title: { color: theme.colors.ink, fontSize: 32, fontWeight: '800', lineHeight: 40 }, body: { color: theme.colors.mutedInk, fontSize: theme.type.guardian, lineHeight: 27 }, panel: { padding: 22, gap: 12, borderRadius: theme.radius.media, backgroundColor: theme.colors.leafSoft, borderWidth: 1, borderColor: theme.colors.leaf }, archive: { padding: 18, gap: 12, borderRadius: theme.radius.media, backgroundColor: theme.colors.amberSoft, borderWidth: 1, borderColor: theme.colors.amber }, overline: { color: theme.colors.leaf, fontSize: 13, fontWeight: '800', letterSpacing: .7 }, panelTitle: { color: theme.colors.ink, fontSize: 28, fontWeight: '800' }, photo: { alignItems: 'center', padding: 18, gap: 12, backgroundColor: theme.colors.surface, borderRadius: theme.radius.media }, patientHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, people: { flexDirection: 'row', gap: 8 }, greeting: { color: theme.colors.mutedInk, fontSize: theme.type.patientSmall }, patientName: { color: theme.colors.ink, fontSize: theme.type.display, fontWeight: '800', lineHeight: 46 }, reminder: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media, padding: 20, gap: 8 }, reminderTitle: { color: theme.colors.ink, fontSize: theme.type.patient, fontWeight: '800' }, section: { color: theme.colors.ink, fontSize: theme.type.patient, fontWeight: '800' }, game: { backgroundColor: theme.colors.white, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media, paddingHorizontal: 20, paddingVertical: 16, gap: 8 }, frame: { alignItems: 'center', gap: 10, padding: 22, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media }, frameName: { color: theme.colors.ink, fontSize: theme.type.display, fontWeight: '800', textAlign: 'center' }, relationship: { color: theme.colors.leaf, fontSize: theme.type.patient, fontWeight: '700' }, note: { color: theme.colors.mutedInk, fontSize: theme.type.guardian, lineHeight: 26, textAlign: 'center' }, prompt: { alignItems: 'center', padding: 28, gap: 8, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: 1, borderRadius: theme.radius.media },
   languageHeader: { alignItems: 'center', gap: 6, marginTop: 24, marginBottom: 18 },
   loginBrand: { alignItems: 'center', gap: 8, marginTop: 32 },
+  centeredTitle: { textAlign: 'center' },
   scrollWithFooter: { paddingBottom: 124 },
   fixedFooter: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: theme.spacing.page, paddingTop: 6, paddingBottom: 8, backgroundColor: theme.colors.canvas },
   floatingVoice: { position: 'absolute', right: theme.spacing.page, bottom: 82, zIndex: 2 },

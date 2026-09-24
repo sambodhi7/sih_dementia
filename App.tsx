@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import SaathiWorkflow from './src/SaathiWorkflow';
-import { SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton, Field, MemberRow, Notice, Portrait } from './src/components/ui';
 import { seed } from './src/data/seed';
@@ -442,4 +443,6 @@ const styles = StyleSheet.create({
 
 // The original concept screen is retained above for reference while the
 // local-first workflow lives in its own module.
-export default SaathiWorkflow;
+export default function App() {
+  return <SafeAreaProvider><SaathiWorkflow /></SafeAreaProvider>;
+}
