@@ -464,6 +464,13 @@ const speechPackDescriptionByLanguage = {
   bengali: 'ইন্টারনেট ছাড়াই Saathi শুনতে একবার ডাউনলোড করুন।',
 };
 
+const memberFontStrings = {
+  english: { fontSizeTitle: 'Text size', fontSizeDescription: 'Change the text size on the Member dashboard.', smallerText: 'A− Smaller', largerText: 'A+ Larger', fontSizeSaveFailed: 'Text size changed, but could not be saved on this device.' },
+  hindi: { fontSizeTitle: 'अक्षरों का आकार', fontSizeDescription: 'सदस्य डैशबोर्ड पर अक्षरों का आकार बदलें।', smallerText: 'A− छोटा', largerText: 'A+ बड़ा', fontSizeSaveFailed: 'अक्षरों का आकार बदला, लेकिन इस डिवाइस पर सहेजा नहीं जा सका।' },
+  assamese: { fontSizeTitle: 'লিখনীৰ আকাৰ', fontSizeDescription: 'সদস্যৰ ডেশ্বব’ৰ্ডত লিখনীৰ আকাৰ সলনি কৰক।', smallerText: 'A− সৰু', largerText: 'A+ ডাঙৰ', fontSizeSaveFailed: 'লিখনীৰ আকাৰ সলনি হ’ল, কিন্তু এই ডিভাইচত সংৰক্ষণ কৰিব পৰা নগ’ল।' },
+  bengali: { fontSizeTitle: 'লেখার আকার', fontSizeDescription: 'সদস্য ড্যাশবোর্ডে লেখার আকার বদলান।', smallerText: 'A− ছোট', largerText: 'A+ বড়', fontSizeSaveFailed: 'লেখার আকার বদলেছে, কিন্তু এই ডিভাইসে সংরক্ষণ করা যায়নি।' },
+};
+
 const voiceStrings = {
   english: { voiceAsk: 'What would you like to do?', voiceExample: 'Say a game name, or say: Go back.', voiceStart: 'Choose by voice', voiceListening: 'Listening…', voiceStop: 'Stop recording', voiceProcessing: 'Finding your place…', voicePermission: 'Microphone access is needed for voice navigation.', voiceProblem: 'I could not hear that. You can use the buttons on this page.', voiceClose: 'Close', voiceOpening: 'Opening' },
   hindi: { voiceAsk: 'आप क्या करना चाहेंगे?', voiceExample: 'खेल का नाम बोलें, या कहें: वापस जाएं।', voiceStart: 'आवाज़ से चुनें', voiceListening: 'सुन रहे हैं…', voiceStop: 'रिकॉर्डिंग रोकें', voiceProcessing: 'सही जगह खोल रहे हैं…', voicePermission: 'आवाज़ से चलाने के लिए माइक्रोफ़ोन की अनुमति चाहिए।', voiceProblem: 'मैं सुन नहीं पाया। आप इस पेज के बटन इस्तेमाल कर सकते हैं।', voiceClose: 'बंद करें', voiceOpening: 'खोल रहे हैं' },
@@ -471,10 +478,17 @@ const voiceStrings = {
   bengali: { voiceAsk: 'আপনি কী করতে চান?', voiceExample: 'খেলার নাম বলুন, অথবা বলুন: ফিরে যান।', voiceStart: 'কণ্ঠে বেছে নিন', voiceListening: 'শুনছি…', voiceStop: 'রেকর্ডিং থামান', voiceProcessing: 'সঠিক জায়গা খোলা হচ্ছে…', voicePermission: 'কণ্ঠে নেভিগেশনের জন্য মাইক্রোফোনের অনুমতি দরকার।', voiceProblem: 'আমি শুনতে পাইনি। আপনি এই পেজের বোতাম ব্যবহার করতে পারেন।', voiceClose: 'বন্ধ করুন', voiceOpening: 'খুলছে' },
 };
 
+const voiceCommandInputStrings = {
+  english: { voiceInputTitle: 'Voice or type', voiceInputLabel: 'Say or type a command', voiceSend: 'Send', voiceReady: 'Check the words, then tap Send.' },
+  hindi: { voiceInputTitle: 'बोलें या लिखें', voiceInputLabel: 'आदेश बोलें या लिखें', voiceSend: 'भेजें', voiceReady: 'शब्द जाँचें, फिर भेजें दबाएँ।' },
+  assamese: { voiceInputTitle: 'কওক বা লিখক', voiceInputLabel: 'নিৰ্দেশ কওক বা লিখক', voiceSend: 'পঠাওক', voiceReady: 'শব্দবোৰ চাই পঠাওক টিপক।' },
+  bengali: { voiceInputTitle: 'বলুন বা লিখুন', voiceInputLabel: 'নির্দেশ বলুন বা লিখুন', voiceSend: 'পাঠান', voiceReady: 'শব্দগুলি দেখে পাঠান চাপুন।' },
+};
+
 /** @type {Record<string, typeof english & typeof modernUi.english>} */
 export const translations = {
-  english: { ...english, ...modernUi.english, ...voiceStrings.english, speechPackDescription: speechPackDescriptionByLanguage.english },
-  hindi: { ...hindi, ...modernUi.hindi, ...voiceStrings.hindi, speechPackDescription: speechPackDescriptionByLanguage.hindi },
-  assamese: { ...assamese, ...modernUi.assamese, ...voiceStrings.assamese, speechPackDescription: speechPackDescriptionByLanguage.assamese },
-  bengali: { ...bengali, ...modernUi.bengali, ...voiceStrings.bengali, speechPackDescription: speechPackDescriptionByLanguage.bengali },
+  english: { ...english, ...modernUi.english, ...voiceStrings.english, ...voiceCommandInputStrings.english, ...memberFontStrings.english, speechPackDescription: speechPackDescriptionByLanguage.english },
+  hindi: { ...hindi, ...modernUi.hindi, ...voiceStrings.hindi, ...voiceCommandInputStrings.hindi, ...memberFontStrings.hindi, speechPackDescription: speechPackDescriptionByLanguage.hindi },
+  assamese: { ...assamese, ...modernUi.assamese, ...voiceStrings.assamese, ...voiceCommandInputStrings.assamese, ...memberFontStrings.assamese, speechPackDescription: speechPackDescriptionByLanguage.assamese },
+  bengali: { ...bengali, ...modernUi.bengali, ...voiceStrings.bengali, ...voiceCommandInputStrings.bengali, ...memberFontStrings.bengali, speechPackDescription: speechPackDescriptionByLanguage.bengali },
 };

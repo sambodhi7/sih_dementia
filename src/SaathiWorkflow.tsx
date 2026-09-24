@@ -61,6 +61,7 @@ const ExitPromptContext = createContext<ExitPromptControls>({ showExitPrompt: ()
 type DashboardScreen = 'dashboard' | 'patient';
 const copy = seed.app.copy;
 const recallModes: RecallMode[] = ['photo-to-name', 'name-to-photo', 'clue-to-photo'];
+const memberFontScales = [1, 1.15, 1.3] as const;
 const gameCovers = {
   whosWho: require('../assets/images/game-covers/whos-who-cover.png'),
   recipe: require('../assets/images/game-covers/recipe-cover.png'),
@@ -124,10 +125,10 @@ function Layout({ children, patient = false, footer, dashboard = false, floating
   return <SafeAreaView edges={dashboard ? ['bottom', 'left', 'right'] : undefined} style={styles.safe}><StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} /><ScrollView contentContainerStyle={[styles.scroll, styles.scrollCompact, dashboard && styles.dashboardScroll, patient && styles.patientScroll, footer ? styles.scrollWithFooter : null]} keyboardShouldPersistTaps="handled">{children}</ScrollView>{floating ? <View style={styles.floatingVoice}>{floating}</View> : null}{footer ? <View style={styles.fixedFooter}>{footer}</View> : null}</SafeAreaView>;
 }
 
-function DashboardBottomNav({ active, onChange, tabs }: { active: string; onChange: (tab: string) => void; tabs: ReadonlyArray<readonly [string, string]> }) {
+function DashboardBottomNav({ active, onChange, tabs, textScale = 1 }: { active: string; onChange: (tab: string) => void; tabs: ReadonlyArray<readonly [string, string]>; textScale?: number }) {
   const { speakAction } = useSpeechGuide();
   return <View style={styles.memberNav} accessibilityRole="tablist">
-    {tabs.map(([id, label]) => <Pressable key={id} hitSlop={4} accessibilityRole="tab" accessibilityState={{ selected: active === id }} onPress={() => { touchFeedback(); speakAction(label); onChange(id); }} style={({ pressed }) => [styles.memberNavItem, active === id && styles.memberNavItemActive, pressed && styles.pressed]}><Text style={[styles.memberNavText, active === id && styles.memberNavTextActive]}>{label}</Text></Pressable>)}
+    {tabs.map(([id, label]) => <Pressable key={id} hitSlop={4} accessibilityRole="tab" accessibilityState={{ selected: active === id }} onPress={() => { touchFeedback(); speakAction(label); onChange(id); }} style={({ pressed }) => [styles.memberNavItem, active === id && styles.memberNavItemActive, pressed && styles.pressed]}><Text style={[styles.memberNavText, active === id && styles.memberNavTextActive, { fontSize: theme.type.meta * textScale }]}>{label}</Text></Pressable>)}
   </View>;
 }
 
@@ -136,28 +137,47 @@ function SpeechPackProgress({ pack, status, busy, problem, progress, copy }: { p
   return <LanguagePackDownload state={busy ? 'downloading' : problem ? 'error' : Platform.OS === 'web' ? 'unavailable' : status} progress={progress} size={formatPackMegabytes(pack.totalBytes)} copy={{ title: copy.speechPackTitle, description: copy.speechPackDescription, ready: copy.speechPackReady, system: copy.systemVoice, unavailable: copy.speechPackUnavailable, downloading: copy.downloadingPack, failed: copy.downloadFailed }} />;
 }
 
-function MemberDashboard({ tab, setTab, languageId, copy, routine, playableMemories, onOpenActivity, onOpenRecipes = () => undefined, onChangeLanguage, onSignOut, onOpenDaysPlan, onOpenSkills, skillsAvailable, notice, onTabChange, speechProgressCard, voiceLauncher }: { tab: MemberTab; setTab: (tab: MemberTab) => void; languageId: string; copy: any; routine: RoutineItem[]; playableMemories: number; onOpenActivity: () => void; onOpenRecipes?: () => void; onChangeLanguage: () => void; onSignOut: () => void; onOpenDaysPlan: () => void; onOpenSkills: () => void; skillsAvailable: boolean; notice: string; onTabChange: (title: string) => void; speechProgressCard?: ReactNode; voiceLauncher?: ReactNode }) {
+function MemberDashboard({ tab, setTab, languageId, copy, routine, playableMemories, onOpenActivity, onOpenRecipes = () => undefined, onChangeLanguage, onSignOut, onOpenDaysPlan, onOpenSkills, skillsAvailable, notice, onTabChange, speechProgressCard, voiceLauncher, fontStep, onFontStepChange }: { tab: MemberTab; setTab: (tab: MemberTab) => void; languageId: string; copy: any; routine: RoutineItem[]; playableMemories: number; onOpenActivity: () => void; onOpenRecipes?: () => void; onChangeLanguage: () => void; onSignOut: () => void; onOpenDaysPlan: () => void; onOpenSkills: () => void; skillsAvailable: boolean; notice: string; onTabChange: (title: string) => void; speechProgressCard?: ReactNode; voiceLauncher?: ReactNode; fontStep: number; onFontStepChange: (step: number) => void }) {
   const upcoming = [...routine].sort((a, b) => a.time.localeCompare(b.time));
+  const textScale = memberFontScales[fontStep] ?? 1;
+  const scaled = (fontSize: number, lineHeight?: number) => ({ fontSize: fontSize * textScale, ...(lineHeight ? { lineHeight: lineHeight * textScale } : {}) });
   const speechLanguageCode = speechLanguageCodeFromAppId(languageId);
   const speechPageId = tab === 'home' ? 'member.games' : tab === 'routine' ? 'member.routine' : 'member.settings';
   const speechPage = speechLanguageCode ? getBundledSpeechPage(speechLanguageCode, speechPageId) : null;
   const pageSpeechText = speechPage ? speechTextFor(speechPage) : '';
   useAutoReadText(pageSpeechText, `member:${speechPageId}:${languageId}`);
   useEffect(() => { onTabChange(tab === 'home' ? copy.gamesTab : tab === 'routine' ? copy.routineTab : copy.settingsTab); }, [copy.gamesTab, copy.routineTab, copy.settingsTab, onTabChange, tab]);
-  const listenCard = (groupId: string) => speechPage ? <ListenButton text={speechTextFor(speechPage, groupId)} languageCode={speechPage.languageCode} label={copy.listenCard} stopLabel={copy.stopListening} /> : null;
-  return <Layout patient dashboard floating={voiceLauncher} footer={<DashboardBottomNav active={tab} onChange={(nextTab) => setTab(nextTab as MemberTab)} tabs={[['home', copy.gamesTab], ['routine', copy.routineTab], ['settings', copy.settingsTab]]} />}>
+  const listenCard = (groupId: string) => speechPage ? <ListenButton text={speechTextFor(speechPage, groupId)} languageCode={speechPage.languageCode} label={copy.listenCard} stopLabel={copy.stopListening} textScale={textScale} /> : null;
+  return <Layout patient dashboard floating={voiceLauncher} footer={<DashboardBottomNav active={tab} onChange={(nextTab) => setTab(nextTab as MemberTab)} tabs={[['home', copy.gamesTab], ['routine', copy.routineTab], ['settings', copy.settingsTab]]} textScale={textScale} />}>
     {speechProgressCard}
-    {notice ? <Notice>{notice}</Notice> : null}
+    {notice ? <Notice textScale={textScale}>{notice}</Notice> : null}
     {tab === 'home' ? <>
-      <Text style={styles.body}>{copy.chooseActivityToday}</Text>
-      <View style={[styles.game, styles.gameCardReady]}><GameCover source={gameCovers.whosWho} label={copy.whosDescription} /><Text style={styles.overline}>{copy.memoryActivity}</Text><Text style={styles.panelTitle}>Who's Who</Text><Text style={styles.body}>{playableMemories ? copy.whosDescription : copy.caregiverAddDescription}</Text>{listenCard('whos-who')}<ActionButton label={copy.openWhosWho} onPress={onOpenActivity} disabled={!playableMemories} /></View>
-      <View style={styles.game}><GameCover source={gameCovers.recipe} label={copy.recipeDescription} /><Text style={styles.overline}>{copy.familiarActivity}</Text><Text style={styles.panelTitle}>Recipe</Text><Text style={styles.body}>{copy.recipeDescription}</Text>{listenCard('recipe')}<ActionButton label={copy.openRecipe} onPress={onOpenRecipes} /></View>
-      <View style={styles.game}><GameCover source={gameCovers.daysPlan} label={copy.daysPlanDescription} /><Text style={styles.overline}>{copy.todayLabel}</Text><Text style={styles.panelTitle}>Day's Plan</Text><Text style={styles.body}>{copy.daysPlanDescription}</Text>{listenCard('days-plan')}<ActionButton label={copy.openDaysPlan} onPress={onOpenDaysPlan} /></View>
-      {skillsAvailable ? <View style={styles.game}><GameCover source={gameCovers.familySkills} label={copy.skillsDescription} /><Text style={styles.overline}>{copy.familySkillsLabel}</Text><Text style={styles.panelTitle}>Learn Together</Text><Text style={styles.body}>{copy.skillsDescription}</Text>{listenCard('skills')}<ActionButton label={copy.chooseSkill} onPress={onOpenSkills} /></View> : null}
-      <Text style={styles.patientSectionTitle}>{copy.upNext}</Text>{upcoming.slice(0, 2).map((item) => <View key={item.id} style={styles.routineRow}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail}</Text></View></View>)}
+      <Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{copy.chooseActivityToday}</Text>
+      <View style={[styles.game, styles.gameCardReady]}><GameCover source={gameCovers.whosWho} label={copy.whosDescription} /><Text style={[styles.overline, scaled(13)]}>{copy.memoryActivity}</Text><Text style={[styles.panelTitle, scaled(28)]}>Who's Who</Text><Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{playableMemories ? copy.whosDescription : copy.caregiverAddDescription}</Text>{listenCard('whos-who')}<ActionButton label={copy.openWhosWho} onPress={onOpenActivity} disabled={!playableMemories} textScale={textScale} /></View>
+      <View style={styles.game}><GameCover source={gameCovers.recipe} label={copy.recipeDescription} /><Text style={[styles.overline, scaled(13)]}>{copy.familiarActivity}</Text><Text style={[styles.panelTitle, scaled(28)]}>Recipe</Text><Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{copy.recipeDescription}</Text>{listenCard('recipe')}<ActionButton label={copy.openRecipe} onPress={onOpenRecipes} textScale={textScale} /></View>
+      <View style={styles.game}><GameCover source={gameCovers.daysPlan} label={copy.daysPlanDescription} /><Text style={[styles.overline, scaled(13)]}>{copy.todayLabel}</Text><Text style={[styles.panelTitle, scaled(28)]}>Day's Plan</Text><Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{copy.daysPlanDescription}</Text>{listenCard('days-plan')}<ActionButton label={copy.openDaysPlan} onPress={onOpenDaysPlan} textScale={textScale} /></View>
+      {skillsAvailable ? <View style={styles.game}><GameCover source={gameCovers.familySkills} label={copy.skillsDescription} /><Text style={[styles.overline, scaled(13)]}>{copy.familySkillsLabel}</Text><Text style={[styles.panelTitle, scaled(28)]}>Learn Together</Text><Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{copy.skillsDescription}</Text>{listenCard('skills')}<ActionButton label={copy.chooseSkill} onPress={onOpenSkills} textScale={textScale} /></View> : null}
+      <Text style={[styles.patientSectionTitle, scaled(theme.type.patient)]}>{copy.upNext}</Text>{upcoming.slice(0, 2).map((item) => <View key={item.id} style={styles.routineRow}><Text style={[styles.routineTime, scaled(theme.type.guardian)]}>{item.time}</Text><View style={styles.routineCopy}><Text style={[styles.routineTitle, scaled(theme.type.guardian)]}>{item.title}</Text><Text style={[styles.routineDetail, scaled(theme.type.meta, 22)]}>{item.detail}</Text></View></View>)}
     </> : null}
-    {tab === 'routine' ? <><Notice>{copy.routineIntro}</Notice><View style={styles.stack}>{upcoming.map((item) => <View key={item.id} style={[styles.routineRow, item.kind === 'medication' && styles.medicationRow]}><Text style={styles.routineTime}>{item.time}</Text><View style={styles.routineCopy}><Text style={styles.routineTitle}>{item.title}</Text><Text style={styles.routineDetail}>{item.detail}</Text>{item.kind === 'medication' ? <Text style={styles.medicationLabel}>{copy.medicationReminder}</Text> : null}</View></View>)}</View></> : null}
-    {tab === 'settings' ? <><View style={styles.memberSettingsPanel}><Text style={styles.panelTitle}>{copy.comfortAccess}</Text><Text style={styles.body}>{copy.comfortDescription}</Text><ActionButton label={copy.changeLanguage} onPress={onChangeLanguage} variant="secondary" /></View><View style={styles.memberSettingsPanel}><Text style={styles.settingsLabel}>{copy.aboutSaathi}</Text><Text style={styles.settingsValue}>{copy.privateLocal}</Text><Text style={styles.body}>{copy.privacyDescription}</Text></View><View style={styles.signOutAction}><ActionButton label={copy.signOut} onPress={onSignOut} variant="danger" /></View></> : null}
+    {tab === 'routine' ? <><Notice textScale={textScale}>{copy.routineIntro}</Notice><View style={styles.stack}>{upcoming.map((item) => <View key={item.id} style={[styles.routineRow, item.kind === 'medication' && styles.medicationRow]}><Text style={[styles.routineTime, scaled(theme.type.guardian)]}>{item.time}</Text><View style={styles.routineCopy}><Text style={[styles.routineTitle, scaled(theme.type.guardian)]}>{item.title}</Text><Text style={[styles.routineDetail, scaled(theme.type.meta, 22)]}>{item.detail}</Text>{item.kind === 'medication' ? <Text style={[styles.medicationLabel, scaled(theme.type.meta)]}>{copy.medicationReminder}</Text> : null}</View></View>)}</View></> : null}
+    {tab === 'settings' ? <>
+      <View style={styles.memberSettingsPanel}>
+        <Text style={[styles.panelTitle, scaled(28)]}>{copy.comfortAccess}</Text>
+        <Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{copy.comfortDescription}</Text>
+        <View style={styles.fontSizeSection}>
+          <Text style={[styles.settingsValue, scaled(theme.type.patientSmall)]}>{copy.fontSizeTitle}</Text>
+          <Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{copy.fontSizeDescription}</Text>
+          <Text style={[styles.fontSizeValue, scaled(theme.type.patientSmall)]} accessibilityLiveRegion="polite">{Math.round(textScale * 100)}%</Text>
+          <View style={styles.fontSizeControls}>
+            <View style={styles.fontSizeAction}><ActionButton label={copy.smallerText} onPress={() => onFontStepChange(fontStep - 1)} variant="secondary" disabled={fontStep === 0} textScale={textScale} /></View>
+            <View style={styles.fontSizeAction}><ActionButton label={copy.largerText} onPress={() => onFontStepChange(fontStep + 1)} variant="secondary" disabled={fontStep === memberFontScales.length - 1} textScale={textScale} /></View>
+          </View>
+        </View>
+        <ActionButton label={copy.changeLanguage} onPress={onChangeLanguage} variant="secondary" textScale={textScale} />
+      </View>
+      <View style={styles.memberSettingsPanel}><Text style={[styles.settingsLabel, scaled(13)]}>{copy.aboutSaathi}</Text><Text style={[styles.settingsValue, scaled(theme.type.patientSmall)]}>{copy.privateLocal}</Text><Text style={[styles.body, scaled(theme.type.guardian, 27)]}>{copy.privacyDescription}</Text></View>
+      <View style={styles.signOutAction}><ActionButton label={copy.signOut} onPress={onSignOut} variant="danger" textScale={textScale} /></View>
+    </> : null}
   </Layout>;
 }
 
@@ -230,6 +250,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const [daysPlanController, setDaysPlanController] = useState<ControllerState | null>(null);
   const [companionPresent, setCompanionPresent] = useState(false);
   const [memberTab, setMemberTab] = useState<MemberTab>('home');
+  const [memberFontStep, setMemberFontStep] = useState(0);
   const [caregiverTab, setCaregiverTab] = useState<CaregiverTab>('insights');
   const [routine, setRoutine] = useState<RoutineItem[]>([]);
   const [routineDraft, setRoutineDraft] = useState({ title: '', detail: '', time: '08:00', kind: 'medication' as RoutineItem['kind'] });
@@ -310,6 +331,8 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   useEffect(() => { void (async () => {
     await initializeItems();
     const storedLanguageId = await getLocalSetting('language-id');
+    const storedMemberFontStep = await getLocalSetting('member-font-step');
+    if (storedMemberFontStep && /^[0-2]$/.test(storedMemberFontStep)) setMemberFontStep(Number(storedMemberFontStep));
     if (seed.languagePacks.some((pack) => pack.id === storedLanguageId)) {
       setLanguageId(storedLanguageId!);
       resetScreen('login');
@@ -321,6 +344,11 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   })(); }, []);
 
   const updateRoutine = async (next: RoutineItem[]) => setRoutine(await saveRoutine(next));
+  const updateMemberFontStep = (step: number) => {
+    if (!Number.isInteger(step) || step < 0 || step >= memberFontScales.length) return;
+    setMemberFontStep(step);
+    void setLocalSetting('member-font-step', String(step)).catch(() => setNotice(copy.fontSizeSaveFailed));
+  };
   const addRoutineItem = async () => {
     if (!routineDraft.title.trim()) { setNotice('Add a clear reminder name first.'); return; }
     await updateRoutine([...routine, { id: `routine-${Date.now()}`, title: routineDraft.title.trim(), detail: routineDraft.detail.trim(), time: routineDraft.time, kind: routineDraft.kind }]);
@@ -569,10 +597,10 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const handleMemberTabChange = useCallback((title: string) => onDashboardChange('patient', title), [onDashboardChange]);
   const currentHint = activeItem ? hintMessage(activeItem, hintLevel) : null;
   const voiceLanguageCode = speechLanguageCodeFromAppId(languageId) ?? 'en';
-  const voiceAvailable = ['en', 'hi', 'bn'].includes(voiceLanguageCode) && (Platform.OS === 'web' || isVoiceNavigationConfigured || speechPackStatus === 'ready');
-  const voiceLauncher = voiceAvailable ? <VoiceGameLauncher languageCode={voiceLanguageCode} copy={{ ask: copy.voiceAsk, example: copy.voiceExample, start: copy.voiceStart, listening: copy.voiceListening, stop: copy.voiceStop, processing: copy.voiceProcessing, permission: copy.voicePermission, problem: copy.voiceProblem, close: copy.voiceClose }} onAudio={openVoiceSelectedGame} onTranscript={openVoiceTranscript} /> : undefined;
+  const voiceAvailable = voiceCommandsFor(voiceLanguageCode).length > 0;
+  const voiceLauncher = voiceAvailable ? <VoiceGameLauncher languageCode={voiceLanguageCode} canRecord={isVoiceNavigationConfigured || speechPackStatus === 'ready'} copy={{ ask: copy.voiceAsk, example: copy.voiceExample, start: copy.voiceStart, listening: copy.voiceListening, stop: copy.voiceStop, processing: copy.voiceProcessing, permission: copy.voicePermission, problem: copy.voiceProblem, close: copy.voiceClose, inputTitle: copy.voiceInputTitle, inputLabel: copy.voiceInputLabel, send: copy.voiceSend, ready: copy.voiceReady }} onAudio={openVoiceSelectedGame} onTranscript={openVoiceTranscript} /> : undefined;
   if (!ready) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>{copy.preparingLibrary}</Text></View></SafeAreaView>;
-  if (screen === 'metrics') return <Layout><Header copy={copy} title={copy.practiceInsights} eyebrow={copy.dashboardTitle} onBack={goBack} /><CaregiverOverview patientId={patientId} locale={language.dateFormatter} routine={routine} onManageRoutine={() => setScreen('routineManager')} onOpenMember={() => resetScreen('patient')} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
+  if (screen === 'metrics') return <Layout><Header copy={copy} title={copy.practiceInsights} eyebrow={copy.dashboardTitle} onBack={goBack} /><CaregiverOverview patientId={patientId} patientName={setup.patientName} locale={language.dateFormatter} routine={routine} onManageRoutine={() => setScreen('routineManager')} onOpenMember={() => resetScreen('patient')} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></Layout>;
   if (screen === 'language') return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.canvas} />
@@ -659,7 +687,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
       <View style={styles.caregiverGameRow}><View style={styles.caregiverGameCopy}><Text style={styles.overline}>{copy.dailyRoutineLabel}</Text><Text style={styles.caregiverGameTitle}>Day’s Plan</Text><Text style={styles.body}>{copy.prepareMoments}</Text></View><ActionButton label={copy.prepareTodayPlan} onPress={() => setScreen('daysPlanEditor')} variant="secondary" /></View>
       <View style={styles.caregiverGameRow}><View style={styles.caregiverGameCopy}><Text style={styles.overline}>{copy.familySkillsLabel}</Text><Text style={styles.caregiverGameTitle}>{copy.skillTransmissionTitle}</Text><Text style={styles.body}>{skills.filter((item) => item.enabled && isPlayableSkill(item.catalogKey)).length ? `${skills.filter((item) => item.enabled && isPlayableSkill(item.catalogKey)).length} ${copy.activitiesReady}` : copy.noActivities}</Text></View><ActionButton label={copy.manageSkills} onPress={() => { setNotice(''); setScreen('skills-manager'); }} variant="secondary" /></View>
     </> : null}
-    {caregiverTab === 'insights' ? <><CaregiverOverview patientId={patientId} locale={language.dateFormatter} routine={routine} onManageRoutine={() => setScreen('routineManager')} onOpenMember={() => resetScreen('patient')} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></> : null}
+    {caregiverTab === 'insights' ? <><CaregiverOverview patientId={patientId} patientName={setup.patientName} locale={language.dateFormatter} routine={routine} onManageRoutine={() => setScreen('routineManager')} onOpenMember={() => resetScreen('patient')} /><CaregiverMetrics patientId={patientId} locale={language.dateFormatter} /></> : null}
     {caregiverTab === 'settings' ? <><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.assignedMember}</Text><Text style={styles.body}>{copy.assignedFor}</Text><Text style={styles.settingsValue}>{setup.patientName || copy.noMemberAssigned}</Text></View><View style={styles.settingsPanel}><Text style={styles.panelTitle}>{copy.inviteId}</Text><Text style={styles.body}>{inviteCode === '—' ? copy.invitePending : copy.inviteInfo}</Text><Text selectable style={[styles.inviteId, inviteCode === '—' && styles.inviteIdUnavailable]}>{inviteCode}</Text></View><ActionButton label={copy.changeLanguage} onPress={() => openLanguageSettings('dashboard')} variant="secondary" /><ActionButton label={copy.dailyRoutineSettings} onPress={() => { setNotice(''); setScreen('routineManager'); }} variant="secondary" /><ActionButton label={copy.signOut} onPress={() => { setNotice(''); setScreen('login'); }} variant="danger" /></> : null}
   </Layout>;
   if (screen === 'daysPlanEditor') return <Layout><Header title="Prepare today’s plan" eyebrow={copy.dashboardTitle} onBack={goBack} /><DaysPlanEditor items={daysPlanItems} onSave={saveDaysPlan} onCancel={() => setScreen('dashboard')} languageId={languageId} /></Layout>;
@@ -678,7 +706,7 @@ function SaathiWorkflowContent({ roleTarget, onRoleTargetHandled, onDashboardCha
   const enabledSkills = skills.filter((item) => item.enabled && item.promptAudioUri && isPlayableSkill(item.catalogKey));
   if (screen === 'recipes') return <RecipeGame patientId={patientId} language={languageId} onHome={() => returnToScreen('patient')} voiceLauncher={voiceLauncher} backRequest={recipeBackRequest} />;
   if (screen === 'patient') {
-    return <MemberDashboard tab={memberTab} setTab={setMemberTab} languageId={languageId} copy={copy} routine={routine} playableMemories={playableMemories} onOpenActivity={() => { void openActivity(); }} onOpenRecipes={() => setScreen('recipes')} onChangeLanguage={() => openLanguageSettings('patient')} onSignOut={() => { setNotice(''); setScreen('login'); }} onOpenDaysPlan={() => setScreen('daysPlan')} onOpenSkills={() => setScreen('skills-home')} skillsAvailable={enabledSkills.length > 0} notice={notice} onTabChange={handleMemberTabChange} speechProgressCard={<SpeechPackProgress pack={selectedSpeechPack} status={speechPackStatus} busy={speechPackBusy} problem={speechPackProblem} progress={speechPackProgress} copy={copy} />} voiceLauncher={voiceLauncher} />;
+    return <MemberDashboard tab={memberTab} setTab={setMemberTab} languageId={languageId} copy={copy} routine={routine} playableMemories={playableMemories} onOpenActivity={() => { void openActivity(); }} onOpenRecipes={() => setScreen('recipes')} onChangeLanguage={() => openLanguageSettings('patient')} onSignOut={() => { setNotice(''); setScreen('login'); }} onOpenDaysPlan={() => setScreen('daysPlan')} onOpenSkills={() => setScreen('skills-home')} skillsAvailable={enabledSkills.length > 0} notice={notice} onTabChange={handleMemberTabChange} speechProgressCard={<SpeechPackProgress pack={selectedSpeechPack} status={speechPackStatus} busy={speechPackBusy} problem={speechPackProblem} progress={speechPackProgress} copy={copy} />} voiceLauncher={voiceLauncher} fontStep={memberFontStep} onFontStepChange={updateMemberFontStep} />;
   }
   return null;
 }
@@ -753,6 +781,10 @@ const styles = StyleSheet.create({
   memberNavTextActive: { color: theme.colors.white },
   settingsPanel: { gap: 12, padding: 20, borderRadius: theme.radius.media, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
   memberSettingsPanel: { gap: 10, padding: 16, borderRadius: theme.radius.media, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  fontSizeSection: { gap: 10, paddingVertical: 12 },
+  fontSizeControls: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  fontSizeAction: { flex: 1, minWidth: 0 },
+  fontSizeValue: { color: theme.colors.leaf, fontSize: theme.type.patientSmall, fontWeight: '800', textAlign: 'center' },
   settingsLabel: { color: theme.colors.leaf, fontSize: 13, fontWeight: '800', letterSpacing: .7 },
   signOutAction: { marginTop: 8 },
   settingsValue: { color: theme.colors.ink, fontSize: theme.type.patientSmall, fontWeight: '800' },

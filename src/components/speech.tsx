@@ -5,7 +5,7 @@ import { touchFeedback } from '../lib/haptics';
 import { speakText, stopSpeaking } from '../speech/runtime';
 import { theme } from '../theme';
 
-export function ListenButton({ text, languageCode = 'en', label = 'Listen', stopLabel = 'Stop' }: { text: string; languageCode?: string; label?: string; stopLabel?: string }) {
+export function ListenButton({ text, languageCode = 'en', label = 'Listen', stopLabel = 'Stop', textScale = 1 }: { text: string; languageCode?: string; label?: string; stopLabel?: string; textScale?: number }) {
   const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => () => { void stopSpeaking(); }, []);
@@ -31,7 +31,7 @@ export function ListenButton({ text, languageCode = 'en', label = 'Listen', stop
       style={({ pressed }) => [styles.listenButton, pressed && styles.pressed]}
     >
       <Text accessible={false} style={styles.speakerIcon}>{speaking ? '■' : '🔊'}</Text>
-      <Text style={styles.listenLabel}>{speaking ? stopLabel : label}</Text>
+      <Text style={[styles.listenLabel, { fontSize: theme.type.guardian * textScale }]}>{speaking ? stopLabel : label}</Text>
     </Pressable>
   );
 }

@@ -16,6 +16,10 @@ expectEqual((0, matcher_1.matchVoiceIntent)('open recipe', commands).intent, 'st
 expectEqual((0, matcher_1.matchVoiceIntent)('open receipe', commands).intent, 'start_recipe', 'matches close transcription');
 expectEqual((0, matcher_1.matchVoiceIntent)('call my daughter', commands).intent, 'unknown', 'rejects unrelated speech');
 expectEqual((0, matcher_1.matchVoiceIntent)('go back', (0, voiceCommands_1.voiceCommandsFor)('en')).intent, 'go_home', 'matches English back command');
+expectEqual((0, matcher_1.matchVoiceIntent)('Recipe', (0, voiceCommands_1.voiceCommandsFor)('en')).intent, 'start_recipe', 'matches spoken game name');
+expectEqual((0, matcher_1.matchVoiceIntent)('Who is who', (0, voiceCommands_1.voiceCommandsFor)('en')).intent, 'start_whos_who', 'matches common transcription');
+expectEqual((0, matcher_1.matchVoiceIntent)('days plan', (0, voiceCommands_1.voiceCommandsFor)('en')).intent, 'start_days_plan', 'matches plan without apostrophe');
 expectEqual((0, matcher_1.matchVoiceIntent)('वापस जाएं', (0, voiceCommands_1.voiceCommandsFor)('hi')).intent, 'go_home', 'matches Hindi back command');
 expectEqual((0, matcher_1.matchVoiceIntent)('ফিরে যান', (0, voiceCommands_1.voiceCommandsFor)('bn')).intent, 'go_home', 'matches Bengali back command');
+expectEqual((0, matcher_1.matchVoiceIntent)('পিছলৈ যাওক', (0, voiceCommands_1.voiceCommandsFor)('as')).intent, 'go_home', 'matches Assamese back command');
 console.log('voice navigation matcher tests passed');

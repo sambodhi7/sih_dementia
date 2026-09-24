@@ -9,29 +9,9 @@ import { readControllerState } from '../storage/controllerState';
 import type { RoutineItem } from '../storage/routines';
 import { theme } from '../theme';
 import { ActionButton, Notice } from './ui';
-
-type TrackedGame = CompletedPractice['gameId'];
-const gameNames: Record<TrackedGame, string> = { days_plan: "Day's Plan", whos_who: "Who's Who" };
-const gameIds: TrackedGame[] = ['days_plan', 'whos_who'];
-
-function samplePractice(now: number): CompletedPractice[] {
-  const examples: Array<[number, TrackedGame, number]> = [
-    [6, 'whos_who', 40], [5, 'days_plan', 50], [4, 'whos_who', 55],
-    [3, 'days_plan', 60], [2, 'whos_who', 70], [2, 'days_plan', 65],
-    [1, 'whos_who', 75], [0, 'days_plan', 80],
-  ];
-  return examples.map(([daysAgo, gameId, independentPercent], index) => {
-    const day = new Date(now);
-    day.setHours(0, 0, 0, 0);
-    day.setDate(day.getDate() - daysAgo);
-    return { gameId, endedAt: day.getTime() + index * 60_000, independentPercent };
-  });
-}
-
-function localDayKey(timestamp: number): string {
-  const date = new Date(timestamp);
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
+import { activityDays, gameNames, samplePractice, scoredRounds, trackedGames } from './caregiverCharts';
+import type { TrackedGame } from './caregiverCharts';
+import { MemberReportExport } from './MemberReportExport';
 
 function TodayCard({ routine, now, onManageRoutine }: { routine: RoutineItem[]; now: number; onManageRoutine: () => void }) {
   const currentMinutes = new Date(now).getHours() * 60 + new Date(now).getMinutes();
@@ -57,16 +37,7 @@ function TodayCard({ routine, now, onManageRoutine }: { routine: RoutineItem[]; 
 }
 
 function ActivityChart({ practice, now, locale, sample }: { practice: CompletedPractice[]; now: number; locale: string; sample: boolean }) {
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(now);
-    date.setHours(12, 0, 0, 0);
-    date.setDate(date.getDate() - (6 - index));
-    return {
-      key: localDayKey(date.getTime()),
-      label: new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date),
-      count: practice.filter((entry) => localDayKey(entry.endedAt) === localDayKey(date.getTime())).length,
-    };
-  });
+  const days = activityDays(practice, now, locale);
   const max = Math.max(1, ...days.map((day) => day.count));
   const total = days.reduce((sum, day) => sum + day.count, 0);
   return <View style={styles.card}>
@@ -85,7 +56,7 @@ function ActivityChart({ practice, now, locale, sample }: { practice: CompletedP
 }
 
 function ProgressChart({ practice, gameId, sample }: { practice: CompletedPractice[]; gameId: TrackedGame; sample: boolean }) {
-  const rounds = practice.filter((entry) => entry.gameId === gameId && entry.independentPercent !== null).slice(-6);
+  const rounds = scoredRounds(practice, gameId);
   return <View style={styles.card}>
     <Text style={styles.eyebrow}>{gameNames[gameId].toUpperCase()}{sample ? ' · SAMPLE' : ''}</Text>
     <Text style={styles.title}>Independent responses</Text>
@@ -114,7 +85,7 @@ function AdaptationCard({ controllers, onOpenMember }: { controllers: Array<{ ga
   </View>;
 }
 
-export function CaregiverOverview({ patientId, locale, routine, onManageRoutine, onOpenMember }: { patientId: string; locale: string; routine: RoutineItem[]; onManageRoutine: () => void; onOpenMember: () => void }) {
+export function CaregiverOverview({ patientId, patientName, locale, routine, onManageRoutine, onOpenMember }: { patientId: string; patientName: string; locale: string; routine: RoutineItem[]; onManageRoutine: () => void; onOpenMember: () => void }) {
   const [practice, setPractice] = useState<CompletedPractice[]>([]);
   const [controllers, setControllers] = useState<Array<{ gameId: TrackedGame; state: ControllerState | null }>>([]);
   const [loading, setLoading] = useState(true);
@@ -125,7 +96,7 @@ export function CaregiverOverview({ patientId, locale, routine, onManageRoutine,
     try {
       const [completed, states] = await Promise.all([
         readCompletedPractice(patientId),
-        Promise.all(gameIds.map(async (gameId) => ({ gameId, state: await readControllerState(patientId, gameId) }))),
+        Promise.all(trackedGames.map(async (gameId) => ({ gameId, state: await readControllerState(patientId, gameId) }))),
       ]);
       setPractice(completed); setControllers(states); setNow(Date.now());
     } catch { setFailed(true); }
@@ -135,11 +106,11 @@ export function CaregiverOverview({ patientId, locale, routine, onManageRoutine,
   const showingSample = practice.length === 0;
   const graphPractice = showingSample ? samplePractice(now) : practice;
   return <View style={styles.stack}>
-    <View style={styles.intro}><Text style={styles.eyebrow}>LOCAL CAREGIVER OVERVIEW</Text><Text style={styles.heading}>Today and recent practice.</Text><Text style={styles.body}>These patterns describe practice and support. They are not a diagnosis.</Text></View>
+    <View style={styles.intro}><Text style={styles.eyebrow}>LOCAL CAREGIVER OVERVIEW</Text><Text style={styles.heading}>Today and recent practice.</Text><Text style={styles.body}>These patterns describe practice and support. They are not a diagnosis.</Text><MemberReportExport patientId={patientId} patientName={patientName} locale={locale} routine={routine} /></View>
     <TodayCard routine={routine} now={now} onManageRoutine={onManageRoutine} />
     {loading && controllers.length === 0 ? <View style={styles.loading}><ActivityIndicator color={theme.colors.leaf} /><Text style={styles.body}>Reading local activity...</Text></View> : failed ? <Notice tone="support">Progress could not be read. Saved activity remains on this device.</Notice> : <>
       <ActivityChart practice={graphPractice} now={now} locale={locale} sample={showingSample} />
-      {gameIds.map((gameId) => <ProgressChart key={gameId} practice={graphPractice} gameId={gameId} sample={showingSample} />)}
+      {trackedGames.map((gameId) => <ProgressChart key={gameId} practice={graphPractice} gameId={gameId} sample={showingSample} />)}
       <AdaptationCard controllers={controllers} onOpenMember={onOpenMember} />
     </>}
     <ActionButton label="Refresh overview" onPress={() => void refresh()} variant="secondary" disabled={loading} />

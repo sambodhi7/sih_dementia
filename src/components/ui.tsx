@@ -12,9 +12,10 @@ type ActionButtonProps = {
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
   disabled?: boolean;
   compact?: boolean;
+  textScale?: number;
 };
 
-export function ActionButton({ label, onPress, variant = 'primary', disabled = false, compact = false }: ActionButtonProps) {
+export function ActionButton({ label, onPress, variant = 'primary', disabled = false, compact = false, textScale = 1 }: ActionButtonProps) {
   const { speakAction } = useSpeechGuide();
   return (
     <Pressable
@@ -31,15 +32,15 @@ export function ActionButton({ label, onPress, variant = 'primary', disabled = f
         disabled && styles.disabled,
       ]}
     >
-      <Text style={[styles.buttonText, variant === 'primary' && styles.primaryText, variant === 'danger' && styles.primaryText]}>{label}</Text>
+      <Text style={[styles.buttonText, variant === 'primary' && styles.primaryText, variant === 'danger' && styles.primaryText, { fontSize: theme.type.guardian * textScale }]}>{label}</Text>
     </Pressable>
   );
 }
 
-export function Notice({ children, tone = 'neutral' }: { children: string; tone?: 'neutral' | 'support' }) {
+export function Notice({ children, tone = 'neutral', textScale = 1 }: { children: string; tone?: 'neutral' | 'support'; textScale?: number }) {
   return (
     <View style={[styles.notice, tone === 'support' && styles.noticeSupport]} accessibilityLiveRegion="polite">
-      <Text style={styles.noticeText}>{children}</Text>
+      <Text style={[styles.noticeText, { fontSize: theme.type.guardian * textScale, lineHeight: 25 * textScale }]}>{children}</Text>
     </View>
   );
 }
